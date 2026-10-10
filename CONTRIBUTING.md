@@ -1,0 +1,92 @@
+# 贡献规范
+
+本项目目前只有一位贡献者，但规范仍然要写成文字——因为**半年后的你会忘记当初的约定**，而 AI 协作工具每次都需要重新被告知规则。
+
+## 一、提交信息规范（中英双语）
+
+### 格式
+
+```
+<type>(<scope>): <中文简述>
+
+<English summary>
+
+[可选] 中文正文：为什么这么改、影响是什么
+[可选] Footer：Refs / BREAKING CHANGE / Co-authored-by
+```
+
+### 逐行规则
+
+| 行 | 规则 |
+|---|---|
+| **第 1 行** | `<type>(<scope>): <中文简述>`。动词开头，说清「做了什么」。不超过 50 个字符，**结尾不加句号**。这一行是 `git log --oneline` 里唯一可见的内容，必须能独立读懂 |
+| **第 2 行** | 空行（必需） |
+| **第 3 行** | **英文一句话，与第 1 行语义一致**。首字母大写，结尾不加句号。它是同一件事的英文表述，**不是逐字直译** |
+| **之后** | 空行 + 可选正文。正文写「为什么」而不是「做了什么」（做了什么已经由首行交代）。涉及不明显的取舍时，引用对应的 ADR |
+| **Footer** | 保持英文：`Refs: #12`、`BREAKING CHANGE: ...`、`Co-authored-by: ...` |
+
+### 为什么这样排布
+
+中文在前，因为中文描述承载更多信息量；英文紧随其后，因为它是给非中文读者与工具看的那一半。英文不塞进首行，是为了让 `git log --oneline` 保持整齐单一的语言。
+
+### type 取值
+
+`feat` 新功能 ｜ `fix` 修缺陷 ｜ `docs` 文档 ｜ `refactor` 重构（不改行为）｜ `test` 测试 ｜ `perf` 性能 ｜ `build` 构建与依赖 ｜ `ci` 持续集成 ｜ `chore` 杂项 ｜ `revert` 回滚
+
+### scope 取值
+
+与本项目的结构对应：
+
+`context`（词汇表）｜ `prd` ｜ `arch` ｜ `adr` ｜ `research` ｜ `shell`（编排外壳）｜ `graph`（规划图）｜ `solver`（约束求解）｜ `verify`（红线断言）｜ `data`（数据访问层）｜ `memory` ｜ `eval` ｜ `web` ｜ `deps` ｜ `repo`
+
+改动跨多个模块时可省略 scope，例如 `docs: ...`。
+
+### 示例
+
+**合格**
+
+```
+docs(prd): 新增产品文档与架构设计
+
+Add product requirements and architecture design
+
+明确三条主线、8 条产品红线与 6 周路线图，并同步落盘 4 条 ADR。
+Refs: CONTEXT.md
+```
+
+```
+feat(solver): 求解不可行时返回最小冲突约束集
+
+Return minimal conflict sets when the solver is infeasible
+
+澄清问题需要知道「是哪几条约束打架」，而不是只得到「无解」。
+这是把求解失败转成产品体验的唯一入口。
+Refs: ADR-0001
+```
+
+**不合格**
+
+```
+update files                    ← 无 type、无 scope、无信息量
+fix: 修改了一些东西。             ← 描述空泛、有句号、缺英文行
+feat: add stuff and refactor     ← 一次提交做了两件事，且缺中文行
+```
+
+## 二、提交粒度
+
+- **一次提交只做一件事**。修缺陷与重构不要混在一起。
+- 文档改动与代码改动**默认分开提交**；除非它们是同一个决策的两面（此时在正文里说明关联）。
+- 提交必须能独立通过检查：不要提交「半成品 + 下一个提交才修好」的状态。
+
+## 三、禁止入库的内容
+
+- 任何密钥、Token、`.env` 文件（`.gitignore` 已排除，但提交前仍要肉眼确认一次）。
+- 离线数据集本体（体积大，且许可多为「可下载但不可再分发」）。
+- **评测隐藏挑战集**（`eval/cases/hidden/`）——它一旦进仓库就不再是隐藏集，防过拟合的作用随之失效。
+
+## 四、文档纪律
+
+- **一切命名以 [CONTEXT.md](./CONTEXT.md) 为准**。新概念先落词汇表，再进代码与文档。
+- 产品决策写进 [docs/prd.md](./docs/prd.md)，实现细节写进 [docs/architecture.md](./docs/architecture.md)，**词汇表只放词汇**。三者的边界不要互相污染。
+- 任何**不可逆**且**反直觉**的决策，补一条 [ADR](./docs/adr/)。判断标准见 [ADR 格式说明](https://github.com/joelparkerhenderson/architecture-decision-record)：难以回退、外人会问「为什么这么做」、且当时存在真实的替代方案——三条同时满足才写。
+- 文档中引用的任何数字必须带出处（指向 [docs/research/](./docs/research/) 中的报告）。**没测过的写「未测」，不写估计值。**
