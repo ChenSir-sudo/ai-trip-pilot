@@ -58,7 +58,7 @@ docs(prd): add product requirements and architecture design
 Record the three mainlines, eight product redlines and the six-week roadmap,
 together with four ADRs.
 
-明确三条主线、8 条产品红线与 6 周路线图，并同步落盘 4 条 ADR。
+明确三条主线、8 条产品红线与阶段路线图，并同步落盘 4 条 ADR。
 Refs: CONTEXT.md
 ```
 
