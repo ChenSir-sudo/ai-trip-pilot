@@ -24,6 +24,7 @@ from langgraph.types import Command
 
 from src.graph.builder import build_graph
 from src.llm.extractor import make_llm_extractor
+from src.llm.schema import validate_slots
 
 REQUEST_PROMPT = "请输入出行需求："
 
@@ -36,16 +37,30 @@ def ask_for_fields(payload: dict) -> dict[str, str]:
       失败模式：不吞 EOFError——输入耗尽时让它向上抛，由入口干净退出。
           如果在这里吞掉，空答复会让澄清再挂起一次，形成读不到输入的活锁。
 
-    只收集非空回答：空回答会被 `clarify` 原样忽略，于是再问一轮——
-    这正是「答不全就再问」那个循环。
+    **校验发生在这里（边界），不在图里。** 见 docs/architecture.md §2：
+    图只负责按「被问过的键」过滤，类型与取值合不合法由边界负责。
+    填错就地重问，不让不合格式的值进入状态——「五天」不该变成一个字符串天数
+    混进后面的求解器。
     """
     print(f"\n{payload['question']}")
-    answer: dict[str, str] = {}
-    for field in payload["fields"]:
-        reply = input(f"  {field['label']}（{field['key']}）: ").strip()
-        if reply:
-            answer[field["key"]] = reply
-    return answer
+
+    while True:
+        answer: dict[str, str] = {}
+        for field in payload["fields"]:
+            reply = input(f"  {field['label']}（{field['key']}）: ").strip()
+            if reply:
+                answer[field["key"]] = reply
+
+        if not answer:
+            print("  （一项都没填，至少填一项；想放弃请按 Ctrl-C 或 Ctrl-D）")
+            continue
+
+        try:
+            # 归一化后再交出去：字符串 "5" 会变成整数 5。
+            return validate_slots(answer)
+        except ValueError as exc:
+            print(f"  这些回答不合法：{exc}")
+            print("  请重新填写。")
 
 
 def run(graph, raw_request: str, thread_id: str) -> dict:

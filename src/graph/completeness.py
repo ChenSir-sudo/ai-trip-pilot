@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from src.graph.state import MissingRequirement
+
 # 槽位键用英文（代码里的标识符），标签用中文（问给用户的原话）。
 # 两者分开放，是为了让状态里的数据与呈现给用户的文案各归其位。
 _SLOT_LABELS: dict[str, str] = {
@@ -40,13 +42,13 @@ def _present(slots: dict, key: str) -> bool:
     return True
 
 
-def find_missing_slots(slots: dict) -> list[dict]:
+def find_missing_slots(slots: dict) -> list[MissingRequirement]:
     """返回缺失项清单，供澄清直接使用。
 
-    每一项的形状是 `{"keys": [...], "label": "..."}`：
+    每一项的形状见 `MissingRequirement`（定义在 `src/graph/state.py`——状态字段的
+    形状由状态自己拥有）：
 
-    - `keys` —— **满足其中任意一个**该缺失项即被填上。单键项只有一个键；
-      二选一组有多个键（用户答日期或答天数都行）。
+    - `keys` —— **满足其中任意一个**该缺失项即被填上。
     - `label` —— 问给用户的原话。
 
     为什么返回结构化对象而不是一句中文：澄清需要**把用户的答复按键回填**，
@@ -61,7 +63,7 @@ def find_missing_slots(slots: dict) -> list[dict]:
     注意 `keys` 用 list 而不是 tuple：这个对象会跟着状态被 checkpointer
     序列化，list 在所有序列化实现下都安全。
     """
-    missing: list[dict] = []
+    missing: list[MissingRequirement] = []
 
     for key in REQUIRED_SLOTS:
         if not _present(slots, key):

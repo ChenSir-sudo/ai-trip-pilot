@@ -1,14 +1,16 @@
-"""槽位的严格 schema。
+"""槽位的严格 schema 与校验。
 
-位置：基础设施层。这是「模型输出」与「图的状态」之间的唯一契约。
+位置：基础设施层。这是「外部输入」与「图的状态」之间的唯一契约——
+    模型输出走 `parse_slots`，用户在澄清里的答复走 `validate_slots`，
+    **两条路共用同一条校验路径**。
 可测试性：纯数据模型，不联网。
 不做的事：不判断必需槽位是否齐全（那是 src/graph/completeness.py 的职责）。
-    这里只管「模型给的这一份数据本身合不合法」。
+    这里只管「这一份数据本身合不合法」。
 
 它一次解决三件事：
   1. 定义槽位的形状（唯一的真相）；
   2. 生成给模型看的 JSON Schema（见 `json_schema_for_prompt`）；
-  3. 校验模型输出（见 `parse_slots`）。
+  3. 校验输入（见 `validate_slots` / `parse_slots`）。
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ FIELD_DESCRIPTIONS: dict[str, str] = {
 class Slots(BaseModel):
     """一次抽取产出的槽位。
 
-    `extra="forbid"` 是刻意的：模型多编字段就是要被看见。
+    `extra="forbid"` 是刻意的：多编字段就是要被看见。
     静默忽略会让提示词悄悄漂移，而漂移是没法测的。
     """
 
@@ -65,6 +67,30 @@ def json_schema_for_prompt() -> str:
     return json.dumps(Slots.model_json_schema(), ensure_ascii=False, indent=2)
 
 
+def validate_slots(payload: dict) -> dict[str, Any]:
+    """校验并归一化一份槽位 dict。
+
+    契约：
+      副作用：无。纯函数。
+      幂等性：是——已归一化的输入再校验一次结果不变。
+      失败模式：抛 ValueError，消息里带上**具体是哪个字段、错在哪**。
+          调用方拿这个原因去处理（重试模型，或让人重填）。
+
+    为什么需要它而不只有 `parse_slots`：**用户答复与模型输出走的是同一个格式**。
+    澄清里用户填的「五天」和一个不合法的模型输出，是同一类问题——都必须在
+    进入状态之前被拦下（见 docs/architecture.md §2 关于边界校验的分工）。
+    """
+    try:
+        return Slots.model_validate(payload).model_dump(exclude_none=True)
+    except ValidationError as exc:
+        # 只留前三条，避免把重试提示词或终端输出撑爆。
+        details = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
+            for err in exc.errors()[:3]
+        )
+        raise ValueError(f"字段不符合 schema：{details}") from exc
+
+
 def parse_slots(raw: str) -> dict[str, Any]:
     """把模型返回的原始字符串解析成槽位 dict。
 
@@ -87,12 +113,4 @@ def parse_slots(raw: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"返回的 JSON 顶层必须是对象，实际是 {type(payload).__name__}")
 
-    try:
-        return Slots.model_validate(payload).model_dump(exclude_none=True)
-    except ValidationError as exc:
-        # 只留前三条，避免把重试提示词撑爆。
-        details = "; ".join(
-            f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
-            for err in exc.errors()[:3]
-        )
-        raise ValueError(f"字段不符合 schema：{details}") from exc
+    return validate_slots(payload)

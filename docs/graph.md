@@ -6,8 +6,8 @@
 > python -m scripts.export_graph
 > ```
 >
-> - 生成时间：2026-10-10 17:03:29
-> - 生成自提交：`401490c`（生成时代码有未提交改动，本文件可能与你看到的代码不一致）
+> - 生成时间：2026-10-10 17:20:27
+> - 生成自提交：`4ce7631`（生成时代码有未提交改动，本文件可能与你看到的代码不一致）
 > - 内容全部从代码推导；本文件里没有任何手写的节点名或字段名
 
 ## 一、拓扑
@@ -68,6 +68,30 @@ graph TD;
 
 ```json
 {
+  "$defs": {
+    "MissingRequirement": {
+      "description": "一个缺失项。\n\n- `keys`：满足其中**任意一个**该缺失项即被填上。单键项只有一个键；\n  二选一组有多个键（用户答日期或答天数都行）。\n- `label`：问给用户的原话。\n\n为什么要有这个类型：这个形状原本只靠约定维系，而它在四处被构造或消费\n（`completeness` 构造、本文件声明、`clarify` 消费、命令行入口再解析）。\n类型化之后形状只有一处定义，改键名时不会再散弹式改四个文件。",
+      "properties": {
+        "keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Keys",
+          "type": "array"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "keys",
+        "label"
+      ],
+      "title": "MissingRequirement",
+      "type": "object"
+    }
+  },
   "description": "规划图的共享状态。\n\n字段分两类，写法完全不同；判断依据是「这个字段会不会被多个节点同时写」：\n\n- **裸字段（覆盖型）**：后写的整个替换先写的。节点想保留历史必须自己拼回去。\n- **挂 reducer 的字段（合并型）**：由 reducer 决定新旧值怎么合。\n\n`total=False` 是必需的：图启动时只需要部分字段，而 TypedDict 默认要求所有键\n都存在，否则类型检查会要求每个调用点把全部字段都填上。",
   "properties": {
     "raw_request": {
@@ -81,8 +105,7 @@ graph TD;
     },
     "missing_slots": {
       "items": {
-        "additionalProperties": true,
-        "type": "object"
+        "$ref": "#/$defs/MissingRequirement"
       },
       "title": "Missing Slots",
       "type": "array"

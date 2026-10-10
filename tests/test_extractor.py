@@ -15,7 +15,7 @@ from src.llm.extractor import (
     make_llm_extractor,
 )
 from src.llm.prompts import EXTRACTION_SYSTEM_PROMPT
-from src.llm.schema import Slots, json_schema_for_prompt, parse_slots
+from src.llm.schema import Slots, json_schema_for_prompt, parse_slots, validate_slots
 
 # ── schema ────────────────────────────────────────────────────────────
 
@@ -57,6 +57,33 @@ def test_days_must_be_within_range():
 def test_non_object_json_is_rejected():
     with pytest.raises(ValueError, match="顶层必须是对象"):
         parse_slots("[1, 2, 3]")
+
+
+# ── 两条输入路径共用同一套校验 ──────────────────────────────────────────
+
+
+def test_validate_slots_normalises_user_input():
+    """用户在澄清里填的永远是字符串，schema 负责归一化。"""
+    assert validate_slots({"days": "5"}) == {"days": 5}
+
+
+def test_validate_slots_rejects_what_a_user_might_type():
+    """「五天」不能被当成天数放行——它会一路流进求解器。"""
+    with pytest.raises(ValueError, match="schema"):
+        validate_slots({"days": "五天"})
+
+
+def test_both_input_paths_are_checked_the_same_way():
+    """模型输出与用户答复必须走同一条校验：否则一个拦、一个不拦。
+
+    这是 review 抓到的真实缺口：`clarify` 只按键过滤，类型校验必须在边界完成。
+    """
+    payload = {"destination_city": "上海", "vibe": "nice"}
+
+    with pytest.raises(ValueError, match="schema"):
+        validate_slots(payload)
+    with pytest.raises(ValueError, match="schema"):
+        parse_slots('{"destination_city": "上海", "vibe": "nice"}')
 
 
 # ── 提示词：DeepSeek JSON Output 的硬要求 ──────────────────────────────

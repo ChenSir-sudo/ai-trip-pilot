@@ -11,6 +11,22 @@ from __future__ import annotations
 from typing import Annotated, Any, TypedDict
 
 
+class MissingRequirement(TypedDict):
+    """一个缺失项。
+
+    - `keys`：满足其中**任意一个**该缺失项即被填上。单键项只有一个键；
+      二选一组有多个键（用户答日期或答天数都行）。
+    - `label`：问给用户的原话。
+
+    为什么要有这个类型：这个形状原本只靠约定维系，而它在四处被构造或消费
+    （`completeness` 构造、本文件声明、`clarify` 消费、命令行入口再解析）。
+    类型化之后形状只有一处定义，改键名时不会再散弹式改四个文件。
+    """
+
+    keys: list[str]
+    label: str
+
+
 def merge_candidates(old: list[dict], new: list[dict]) -> list[dict]:
     """合并候选池：按 id 去重，重复的保留先到的那个。
 
@@ -56,8 +72,8 @@ class TripState(TypedDict, total=False):
     # ── 完整性判定结果：覆盖型 ──
     # 由 check_completeness 计算，**不是抽取节点声明的**：「哪些槽位是必需的」
     # 是一条代码里的规则（见 src/graph/completeness.py），交给模型判断会让图走错分支。
-    # 每项是 {"keys": [...], "label": "..."}：keys 满足任一即可，label 是问用户的原话。
-    missing_slots: list[dict]
+    # 每项是一个 MissingRequirement：keys 满足任一即可，label 是问用户的原话。
+    missing_slots: list[MissingRequirement]
 
     # ── 澄清：覆盖型 ──
     # 记录最近一次问出去的话。问句本身随中断的 payload 返回给调用方，

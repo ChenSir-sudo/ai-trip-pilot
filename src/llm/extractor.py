@@ -129,12 +129,13 @@ def make_llm_extractor(
           所以 `build_graph()` 在没有 key 的机器上也能成功。
       失败模式：第一次调用时若缺少 key，抛 src.llm.config.ConfigError。
     """
-    cached: dict[str, CompletionFn | None] = {"fn": complete}
+    cached: CompletionFn | None = complete
 
     def extractor(raw_request: str) -> dict[str, Any]:
-        if cached["fn"] is None:
+        nonlocal cached
+        if cached is None:
             resolved = config or load_config()
-            cached["fn"] = make_completion_fn(resolved)
-        return extract_slots_with_llm(raw_request, complete=cached["fn"])  # type: ignore[arg-type]
+            cached = make_completion_fn(resolved)
+        return extract_slots_with_llm(raw_request, complete=cached)
 
     return extractor

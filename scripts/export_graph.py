@@ -39,6 +39,9 @@ def _describe_channel(channel) -> tuple[str, str]:
           让它在文档里显形——静默当成「覆盖」会把错误藏起来。
     """
     kind = type(channel).__name__
+    # 按类名判断而不是 isinstance：这些通道类属于框架内部实现，显式 import 它们
+    # 会让升级时的耦合更硬（内部路径一改就 ImportError）。用类名的话，改名会在
+    # 输出里以「未知」显形，而不是让导出静默失败。
     if kind == "LastValue":
         return "覆盖", "后写的整体替换先写的"
     if kind == "BinaryOperatorAggregate":
