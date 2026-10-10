@@ -3,7 +3,7 @@
 位置：决策层。被规划图的 `check_completeness` 节点调用（见 docs/architecture.md §3）。
 可测试性：纯函数，不 import 图框架、不联网、不调模型——规则可以脱离图被单测。
 不做的事：不解析出行需求（那是 `extract_slots` 的职责）；不判断软偏好；
-    不决定该怎么问用户（那是 `clarify` 的职责）。
+    不决定该怎么措辞（那是 `clarify` 的职责）。
 """
 
 from __future__ import annotations
@@ -40,25 +40,40 @@ def _present(slots: dict, key: str) -> bool:
     return True
 
 
-def find_missing_slots(slots: dict) -> list[str]:
-    """返回缺失项的**中文标签**清单，供澄清使用。
+def find_missing_slots(slots: dict) -> list[dict]:
+    """返回缺失项清单，供澄清直接使用。
+
+    每一项的形状是 `{"keys": [...], "label": "..."}`：
+
+    - `keys` —— **满足其中任意一个**该缺失项即被填上。单键项只有一个键；
+      二选一组有多个键（用户答日期或答天数都行）。
+    - `label` —— 问给用户的原话。
+
+    为什么返回结构化对象而不是一句中文：澄清需要**把用户的答复按键回填**，
+    而回填需要键。只给标签的话，`clarify` 就得自己再算一遍缺失项，
+    「什么算完整」会出现两个实现，迟早分叉。
 
     契约：
       副作用：无。纯函数。
       幂等性：是。
       失败模式：不抛异常。`slots` 为空或缺键都返回「全缺」。
 
-    返回标签而不是键，是因为这个清单的消费者是 `clarify`——它要问用户的原话
-    就是这些词。二选一组给出「出发日期 或 天数」这样的表述，因为那正是该问的话。
+    注意 `keys` 用 list 而不是 tuple：这个对象会跟着状态被 checkpointer
+    序列化，list 在所有序列化实现下都安全。
     """
-    missing: list[str] = []
+    missing: list[dict] = []
 
     for key in REQUIRED_SLOTS:
         if not _present(slots, key):
-            missing.append(_SLOT_LABELS[key])
+            missing.append({"keys": [key], "label": _SLOT_LABELS[key]})
 
     for group in EITHER_SLOTS:
         if not any(_present(slots, key) for key in group):
-            missing.append(" 或 ".join(_SLOT_LABELS[key] for key in group))
+            missing.append(
+                {
+                    "keys": list(group),
+                    "label": " 或 ".join(_SLOT_LABELS[key] for key in group),
+                }
+            )
 
     return missing

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
 
 from src.graph.completeness import find_missing_slots
 from src.graph.state import TripState
@@ -67,28 +68,55 @@ def route_after_check(state: TripState) -> str:
 
 
 def clarify(state: TripState) -> dict:
-    """把缺失槽位拼成一句问话。
+    """向用户提问并挂起，等答复后把答复回填进槽位。
 
-    位置：澄清分支的终点。
-    副作用：无。
-    幂等性：是。
-    失败模式：不抛异常。
+    位置：澄清分支的节点，也是全图**唯一的挂起点**。
+    副作用：**挂起等待**——依赖 checkpointer 把状态存下来，否则挂起之后无法恢复。
+        函数本身不写存储、不发请求、不调模型。
+    幂等性：**不幂等**。恢复时 LangGraph 会让本节点**从头重新执行**，
+        `interrupt()` 之前的语句会再跑一遍（tests/test_graph.py 有一条测试专门
+        固定这条框架语义）。因此 `interrupt()` 之前不允许出现任何副作用。
+    失败模式：没有 checkpointer 时，首次 invoke **照常返回挂起结果、不报错**，
+        但恢复时抛 `RuntimeError: Cannot use Command(resume=...) without checkpointer`。
+        失败被推迟到恢复那一刻——挂起时看不出来，所以这条必须靠测试守。
 
-    ⚠️ 本步是占位实现：**只生成问句就结束，不做挂起。**
-
-    真正的澄清要能挂起、等用户答复、再从断点继续——那是中断与 checkpointer 的
-    职责，单独一步做。届时这个函数会多出中断调用。
-    另：按 docs/prd.md §6.4，澄清问题必须附带两个以上可执行选项；附选项同样
-    属于那一步，现在只把「缺什么」讲清楚。
+    措辞遵循 docs/prd.md §6.4：一次只问一个批次，且每个问题都要让用户
+    能一句话答完。
     """
-    missing = state.get("missing_slots") or []
-    return {"clarify_question": "开始规划前还需要确认：" + "、".join(missing) + "。"}
+    pending = state.get("missing_slots") or []
+    question = "开始规划前还需要确认：" + "、".join(item["label"] for item in pending) + "。"
+
+    # 恢复时 interrupt() 返回调用方在 Command(resume=...) 里给的答复。
+    # 注意：本函数之后会被从头重新执行一遍，question 也会被重算——纯函数，无妨。
+    answer = interrupt(
+        {
+            "question": question,
+            "fields": [
+                {"key": key, "label": item["label"]}
+                for item in pending
+                for key in item["keys"]
+            ],
+        }
+    )
+
+    # 只接受问过的键。答复是**受控接口**，不是第二个入口：允许任意键写入
+    # 等于给调用方开了一条绕过抽取通道、直接篡改槽位的路。
+    # 代价是用户主动多说的内容（"顺便说下预算五千"）会被丢掉——那属于抽取
+    # 通道的职责；将来若需要，应当把补充文本重新送给 extract_slots。
+    asked = {key for item in pending for key in item["keys"]}
+    accepted = {key: value for key, value in (answer or {}).items() if key in asked}
+
+    return {
+        "clarify_question": question,
+        "slots": {**(state.get("slots") or {}), **accepted},
+    }
 
 
 def build_graph():
     """组装并编译规划图。
 
-    可测试性：返回的图带内存 checkpointer，可以在没有数据库的机器上直接 invoke。
+    可测试性：返回的图带内存 checkpointer，可以在没有模型密钥的机器上直接 invoke。
+    注意 checkpointer 现在是**必需**的：图里有挂起点，去掉它就无法恢复。
     """
     builder = StateGraph(TripState)
 
@@ -105,8 +133,11 @@ def build_graph():
         route_after_check,
         {"clarify": "clarify", "ready": END},
     )
-    builder.add_edge("clarify", END)
+
+    # 澄清循环：答复之后回到判定，答不全就再问一轮。
+    # 这个环不会空转——每一轮都以挂起结束，必须等调用方给出答复才继续。
+    builder.add_edge("clarify", "check_completeness")
 
     # InMemorySaver：进程内的 checkpointer，进程退出即丢失（旧版文档里叫 MemorySaver）。
-    # 注意它目前仍是**接线但闲置**：图里还没有中断点，没有东西需要恢复。
+    # 它不再是「接线但闲置」——挂起点的状态存与取都靠它。
     return builder.compile(checkpointer=InMemorySaver())

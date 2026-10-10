@@ -9,14 +9,19 @@ from __future__ import annotations
 from src.graph.completeness import find_missing_slots
 
 
+def _labels(missing: list[dict]) -> list[str]:
+    """只取给人看的标签，让断言读起来像业务规则而不是数据结构。"""
+    return [item["label"] for item in missing]
+
+
 def test_empty_slots_report_everything_missing():
     """什么都没给时，必需槽位与二选一组全部报缺。"""
-    assert find_missing_slots({}) == ["出发城市", "目的城市", "出发日期 或 天数"]
+    assert _labels(find_missing_slots({})) == ["出发城市", "目的城市", "出发日期 或 天数"]
 
 
 def test_none_slots_report_everything_missing():
     """slots 传 None 不该抛异常——节点可能读到一个还没被写过的字段。"""
-    assert find_missing_slots(None) == ["出发城市", "目的城市", "出发日期 或 天数"]
+    assert _labels(find_missing_slots(None)) == ["出发城市", "目的城市", "出发日期 或 天数"]
 
 
 def test_either_group_is_satisfied_by_days_alone():
@@ -33,6 +38,18 @@ def test_either_group_is_satisfied_by_date_alone():
     assert find_missing_slots(slots) == []
 
 
+def test_either_group_exposes_both_keys():
+    """二选一项必须把两个键都交出来——答复回填要靠它。
+
+    只给标签的话，`clarify` 就得自己再算一遍缺失项，
+    「什么算完整」会出现两个实现，迟早分叉。
+    """
+    group = [item for item in find_missing_slots({}) if len(item["keys"]) > 1]
+
+    assert group, "缺失清单里应当有一个二选一项"
+    assert sorted(group[0]["keys"]) == ["days", "depart_date"]
+
+
 def test_whitespace_only_string_counts_as_missing():
     """空白字符串与「没给」在规划上等价。
 
@@ -41,15 +58,15 @@ def test_whitespace_only_string_counts_as_missing():
     """
     slots = {"origin_city": "   ", "destination_city": "上海", "days": 5}
 
-    assert find_missing_slots(slots) == ["出发城市"]
+    assert _labels(find_missing_slots(slots)) == ["出发城市"]
 
 
 def test_none_value_counts_as_missing():
     slots = {"origin_city": None, "destination_city": "上海", "days": 5}
 
-    assert find_missing_slots(slots) == ["出发城市"]
+    assert _labels(find_missing_slots(slots)) == ["出发城市"]
 
 
 def test_missing_order_is_stable():
     """顺序稳定，澄清问句才不会每次都不一样。"""
-    assert find_missing_slots({"days": 3}) == ["出发城市", "目的城市"]
+    assert _labels(find_missing_slots({"days": 3})) == ["出发城市", "目的城市"]

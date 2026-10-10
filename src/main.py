@@ -1,52 +1,61 @@
-"""手工跑两个场景，看见图的分支。
+"""手工跑一遍，看见挂起与恢复。
 
 位置：本步的临时入口。真正的入口是编排外壳（会话、幂等、路由），
     外壳在后续步骤实现，届时本文件退回为调试工具。
 可测试性：需要 langgraph，不需要网络、不需要模型密钥。
 不做的事：不做会话管理、不做幂等、不做错误处理、不落库。
 
-为什么要跑两个场景：桩节点返回固定槽位，只会走澄清分支；把槽位直接注入
-    第二个场景，才能看见「槽位齐全」那条边的真实走向。
+为什么这里变成了一段流程而不是几次 invoke：澄清不是一次调用，而是
+    **挂起一次、恢复一次**。第一次 invoke 返回的是「问题」，第二次才把
+    答复送进去——这个过程必须能被肉眼看见，否则「中断」等于没验证。
 """
 
 from __future__ import annotations
 
+from langgraph.types import Command
+
 from src.graph.builder import build_graph
 
-SCENARIOS: tuple[tuple[str, dict, str], ...] = (
-    (
-        "场景一：只给出行需求原文",
-        {"raw_request": "规划一下去上海玩 7 天"},
-        "demo-missing",
-    ),
-    (
-        "场景二：槽位已齐（直接注入，模拟抽取已填全）",
+RAW_REQUEST = "规划一下去上海玩 7 天"
+
+
+def main() -> None:
+    """跑两个场景：一个需要澄清（挂起 + 恢复），一个槽位已齐（不挂起）。"""
+    graph = build_graph()
+
+    # ── 场景一：信息不全，走澄清 ──
+    print("=== 场景一：需求信息不全 → 挂起 → 答复 → 继续 ===")
+    config = {"configurable": {"thread_id": "demo-clarify"}}
+
+    # 第一次 invoke 会执行到 clarify 里的 interrupt() 然后挂起。
+    # 注意它是**正常返回**的，不是抛异常——挂起不是失败。
+    suspended = graph.invoke({"raw_request": RAW_REQUEST}, config=config)
+    payload = suspended["__interrupt__"][0].value
+    print("状态          : 已挂起，执行停在", graph.get_state(config).next[0])
+    print("问用户        :", payload["question"])
+    print("可答的键      :", [field["key"] for field in payload["fields"]])
+
+    # 第一次答复故意给空：证明澄清是个循环，答不全就会再问一次。
+    again = graph.invoke(Command(resume={}), config=config)
+    print("答复空对象后  :", "仍挂起，再问一次" if "__interrupt__" in again else "意外地继续了")
+
+    # 第二次答复给全：图跑完。
+    done = graph.invoke(Command(resume={"origin_city": "杭州"}), config=config)
+    print("补上出发城市后:", "完成" if "__interrupt__" not in done else "又挂起了")
+    print("最终 slots    :", done.get("slots"))
+    print("最终 missing  :", done.get("missing_slots"))
+
+    # ── 场景二：槽位已齐，不挂起 ──
+    print("\n=== 场景二：槽位已齐 → 不挂起，直接结束 ===")
+    ready = graph.invoke(
         {
             "raw_request": "从杭州去上海玩 5 天",
             "slots": {"origin_city": "杭州", "destination_city": "上海", "days": 5},
         },
-        "demo-ready",
-    ),
-)
-
-
-def main() -> None:
-    """跑两个场景并打印状态，用于人眼确认分支走对了。"""
-    graph = build_graph()
-
-    for title, payload, thread_id in SCENARIOS:
-        # thread_id 现阶段没有实际作用，但必须带上：澄清的中断与恢复要靠它找回
-        # 断点。提前固定下来，可以避免后面接入中断时改动所有调用点。
-        result = graph.invoke(payload, config={"configurable": {"thread_id": thread_id}})
-
-        print(f"\n=== {title} ===")
-        print("slots         :", result.get("slots"))
-        print("missing_slots :", result.get("missing_slots"))
-        if "clarify_question" in result:
-            print("走了哪条边    : → clarify")
-            print("问用户        :", result["clarify_question"])
-        else:
-            print("走了哪条边    : → 继续（下一步的节点还不存在，直接结束）")
+        config={"configurable": {"thread_id": "demo-ready"}},
+    )
+    print("挂了没        :", "挂起了" if "__interrupt__" in ready else "没挂起")
+    print("missing_slots :", ready.get("missing_slots"))
 
 
 if __name__ == "__main__":

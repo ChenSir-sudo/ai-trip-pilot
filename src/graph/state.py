@@ -56,10 +56,12 @@ class TripState(TypedDict, total=False):
     # ── 完整性判定结果：覆盖型 ──
     # 由 check_completeness 计算，**不是抽取节点声明的**：「哪些槽位是必需的」
     # 是一条代码里的规则（见 src/graph/completeness.py），交给模型判断会让图走错分支。
-    missing_slots: list[str]
+    # 每项是 {"keys": [...], "label": "..."}：keys 满足任一即可，label 是问用户的原话。
+    missing_slots: list[dict]
 
     # ── 澄清：覆盖型 ──
-    # 目前只存一句问句。接入中断后，它会与挂起状态一起被持久化。
+    # 记录最近一次问出去的话。问句本身随中断的 payload 返回给调用方，
+    # 这里留一份是为了让「问过什么」在状态里可查。
     clarify_question: str
 
     # ── 候选池：合并型 ──
