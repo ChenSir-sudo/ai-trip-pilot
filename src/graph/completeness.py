@@ -28,6 +28,15 @@ REQUIRED_SLOTS: tuple[str, ...] = ("origin_city", "destination_city")
 EITHER_SLOTS: tuple[tuple[str, ...], ...] = (("depart_date", "days"),)
 
 
+def slot_label(key: str) -> str:
+    """槽位键对应的中文标签。
+
+    公开出来是给 `clarify` 用的：二选一组会被摊成两个提问，而每个提问必须
+    说清**自己问的是哪一项**——否则两行提示文字一模一样，用户会以为都得填。
+    """
+    return _SLOT_LABELS.get(key, key)
+
+
 def _present(slots: dict, key: str) -> bool:
     """槽位存在且不是空值才算「给了」。
 

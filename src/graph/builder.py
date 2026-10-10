@@ -17,7 +17,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
-from src.graph.completeness import find_missing_slots
+from src.graph.completeness import find_missing_slots, slot_label
 from src.graph.state import TripState
 
 # 出行需求原文 → 槽位 dict。由调用方注入，图本身不知道它背后是不是模型。
@@ -81,6 +81,24 @@ def route_after_check(state: TripState) -> str:
     return "clarify" if state.get("missing_slots") else "ready"
 
 
+def askable_fields(pending: list[dict]) -> list[dict]:
+    """把缺失项摊平成可逐个提问的字段。
+
+    二选一的一组会摊成两个提问，此时每个提问都要带「二选一」提示：手工测试时
+    发现两个提问原本共用同一个组标签（都叫「出发日期 或 天数」），看起来像要
+    填两个——而实际上填任一即可。
+    """
+    fields: list[dict] = []
+    for item in pending:
+        alternatives = len(item["keys"]) > 1
+        for key in item["keys"]:
+            label = slot_label(key)
+            if alternatives:
+                label += "（与另一项二选一，填一个即可）"
+            fields.append({"key": key, "label": label})
+    return fields
+
+
 def clarify(state: TripState) -> dict:
     """向用户提问并挂起，等答复后把答复回填进槽位。
 
@@ -105,11 +123,7 @@ def clarify(state: TripState) -> dict:
     answer = interrupt(
         {
             "question": question,
-            "fields": [
-                {"key": key, "label": item["label"]}
-                for item in pending
-                for key in item["keys"]
-            ],
+            "fields": askable_fields(pending),
         }
     )
 

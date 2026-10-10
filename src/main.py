@@ -47,7 +47,7 @@ def ask_for_fields(payload: dict) -> dict[str, str]:
     while True:
         answer: dict[str, str] = {}
         for field in payload["fields"]:
-            reply = input(f"  {field['label']}（{field['key']}）: ").strip()
+            reply = input(f"  {field['label']} [{field['key']}]: ").strip()
             if reply:
                 answer[field["key"]] = reply
 

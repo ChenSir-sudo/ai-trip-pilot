@@ -174,6 +174,23 @@ def test_first_invoke_suspends_at_clarify():
     assert graph.get_state(config).next == ("clarify",)
 
 
+def test_either_group_fields_are_labelled_distinctly():
+    """二选一组摊成两个提问时，两行标签必须不一样。
+
+    这条守着**手工测试发现的问题**：两个提问原本共用同一个组标签
+    （都叫「出发日期 或 天数」），看起来像要填两个，而实际填任一即可。
+    单元测试之前没覆盖到它，因为断言只检查了字段被问出，没检查问法。
+    """
+    graph = build_graph(extractor=lambda raw: {})  # 什么都不抽 → 二选一组也缺
+    config = _config("test-labels")
+
+    result = graph.invoke({"raw_request": RAW_REQUEST}, config=config)
+    labels = [field["label"] for field in result["__interrupt__"][0].value["fields"]]
+
+    assert len(labels) == len(set(labels)), f"提问标签不能重复：{labels}"
+    assert any("二选一" in label for label in labels), "同组的两项要说明是二选一"
+
+
 def test_resume_with_the_answer_finishes():
     """答复之后从断点继续，并真的把答复写进了槽位。"""
     graph = build_graph(extractor=_stub_extractor)
