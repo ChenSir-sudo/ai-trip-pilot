@@ -6,8 +6,8 @@
 > python -m scripts.export_graph
 > ```
 >
-> - 生成时间：2026-10-10 16:00:26
-> - 生成自提交：`6831a02`（生成时代码有未提交改动，本文件可能与你看到的代码不一致）
+> - 生成时间：2026-10-10 16:32:31
+> - 生成自提交：`ed92f3c`（生成时代码有未提交改动，本文件可能与你看到的代码不一致）
 > - 内容全部从代码推导；本文件里没有任何手写的节点名或字段名
 
 ## 一、拓扑
@@ -23,9 +23,14 @@ config:
 graph TD;
 	__start__([<p>__start__</p>]):::first
 	extract_slots(extract_slots)
+	check_completeness(check_completeness)
+	clarify(clarify)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> extract_slots;
-	extract_slots --> __end__;
+	check_completeness -. &nbsp;ready&nbsp; .-> __end__;
+	check_completeness -.-> clarify;
+	extract_slots --> check_completeness;
+	clarify --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
 	classDef last fill:#bfb6fc
@@ -39,6 +44,7 @@ graph TD;
 | 字段 | 合并语义 | 说明 |
 |---|---|---|
 | `candidates` | **合并** | merge_candidates |
+| `clarify_question` | **覆盖** | 后写的整体替换先写的 |
 | `missing_slots` | **覆盖** | 后写的整体替换先写的 |
 | `raw_request` | **覆盖** | 后写的整体替换先写的 |
 | `slots` | **覆盖** | 后写的整体替换先写的 |
@@ -51,6 +57,8 @@ graph TD;
 
 | 节点 | 文档字符串首行 |
 |---|---|
+| `check_completeness` | 判定槽位够不够开始规划，并把缺失项写进状态。 |
+| `clarify` | 把缺失槽位拼成一句问话。 |
 | `extract_slots` | 把出行需求原文抽成结构化槽位。 |
 
 ## 四、状态形状（输入 JSON Schema）
@@ -77,6 +85,10 @@ graph TD;
       },
       "title": "Missing Slots",
       "type": "array"
+    },
+    "clarify_question": {
+      "title": "Clarify Question",
+      "type": "string"
     },
     "candidates": {
       "items": {

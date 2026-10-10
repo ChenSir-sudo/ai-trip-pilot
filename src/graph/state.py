@@ -52,7 +52,15 @@ class TripState(TypedDict, total=False):
     # ── 抽取结果：覆盖型 ──
     # 「本轮型」字段。重抽一次就该整体替换——这正是想要的语义，所以不加 reducer。
     slots: dict[str, Any]
+
+    # ── 完整性判定结果：覆盖型 ──
+    # 由 check_completeness 计算，**不是抽取节点声明的**：「哪些槽位是必需的」
+    # 是一条代码里的规则（见 src/graph/completeness.py），交给模型判断会让图走错分支。
     missing_slots: list[str]
+
+    # ── 澄清：覆盖型 ──
+    # 目前只存一句问句。接入中断后，它会与挂起状态一起被持久化。
+    clarify_question: str
 
     # ── 候选池：合并型 ──
     # 现在还没有节点写它。提前定义，是因为这个字段的 reducer 决定了后续每个节点

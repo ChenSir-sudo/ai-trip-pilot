@@ -11,21 +11,24 @@ from src.graph.builder import build_graph
 from src.graph.state import merge_candidates
 
 
-def test_topology_is_start_to_extract_slots_to_end():
-    """拓扑：START → extract_slots → END。"""
+def test_topology_has_a_fork_after_completeness_check():
+    """拓扑：START → extract_slots → check_completeness →{clarify | END}。"""
     graph = build_graph()
 
-    edges = {(e.source, e.target) for e in graph.get_graph().edges}
+    edges = {(e.source, e.target, e.conditional) for e in graph.get_graph().edges}
 
-    assert ("__start__", "extract_slots") in edges
-    assert ("extract_slots", "__end__") in edges
+    assert ("__start__", "extract_slots", False) in edges
+    assert ("extract_slots", "check_completeness", False) in edges
+    assert ("check_completeness", "clarify", True) in edges
+    assert ("check_completeness", "__end__", True) in edges
+    assert ("clarify", "__end__", False) in edges
 
 
 def test_invoke_keeps_input_and_adds_slots():
     """状态流转：输入字段不被覆盖，节点返回的增量被合并进来。
 
     这条测试守的是「覆盖 vs 合并」这个最容易搞错的语义：节点只返回
-    slots / missing_slots，而 raw_request 必须原样保留下来。
+    自己的那几个字段，而 raw_request 必须原样保留下来。
     """
     graph = build_graph()
 
@@ -35,8 +38,42 @@ def test_invoke_keeps_input_and_adds_slots():
     )
 
     assert result["raw_request"] == "规划一下去上海玩 7 天"
-    assert result["slots"]["destination"] == "上海"
-    assert result["missing_slots"], "缺失槽位不应为空——它决定下一步是否要澄清"
+    assert result["slots"]["destination_city"] == "上海"
+
+
+def test_missing_slots_take_the_clarify_branch():
+    """缺槽位 → 走澄清分支，并且真的生成了问句。
+
+    桩节点只给了目的城市与天数，所以缺出发城市（「日期或天数」已由 days 满足）。
+    """
+    graph = build_graph()
+
+    result = graph.invoke(
+        {"raw_request": "规划一下去上海玩 7 天"},
+        config={"configurable": {"thread_id": "test-clarify"}},
+    )
+
+    assert result["missing_slots"] == ["出发城市"]
+    assert "出发城市" in result["clarify_question"]
+
+
+def test_complete_slots_take_the_ready_branch():
+    """槽位齐全 → 不走澄清分支：没有任何问句被写进状态。
+
+    「没写」正是这条边存在的证据——如果分支走错，clarify 会给这个字段赋值。
+    """
+    graph = build_graph()
+
+    result = graph.invoke(
+        {
+            "raw_request": "从杭州去上海玩 5 天",
+            "slots": {"origin_city": "杭州", "destination_city": "上海", "days": 5},
+        },
+        config={"configurable": {"thread_id": "test-ready"}},
+    )
+
+    assert result["missing_slots"] == []
+    assert "clarify_question" not in result
 
 
 def test_merge_candidates_dedupes_by_id_keeping_first():
