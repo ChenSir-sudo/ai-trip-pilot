@@ -5,6 +5,14 @@
 >
 > **更正（同日主 agent 复核）**：本报告第 1 节称「高德个人认证 POI 搜索仅 **100 次/日**」，该数据取自第三方镜像页，**已被官方定价页推翻**——正确口径为基础搜索服务 **5,000 次/月**（超限 30 元/万次）。详见 [2026-amap-compliance-verify.md](./2026-amap-compliance-verify.md)。**该更正不改变本报告的结论方向**：真正的硬约束是协议明文禁止「存储/缓存」与「数据集构建」，而非配额，因此离线评测路径依然必需。
 
+> **更正（2026-10-11，三处事实错误）**：后续核实推翻了本报告的三处结论，详见 [2026-datasets-triptailor-chinatravel.md](./2026-datasets-triptailor-chinatravel.md) 与 [2026-osm-ecosystem-for-offline-poi.md](./2026-osm-ecosystem-for-offline-poi.md)：
+>
+> 1. **ChinaTravel 的许可不是 CC-BY-NC-SA-4.0，而是 CC-BY-4.0**（HF API 标签 `license:cc-by-4.0`，实测）。**「非商业」限制并不存在**，本报告第 3、6、7 节的相应表述作废。
+> 2. **ChinaTravel 主仓库里没有 POI 数据**——它是 query / 对话数据集。结构化 POI 在配套的 `LAMDA-NeSy/ChinaTravel-Sandbox`（**12,172 条 / 10 城**，attractions 与 restaurants 字段较全）。
+> 3. **本报告给的中国 POI 导出链接不可用**：`feature.data-humdata-org.ahconu.org` 实测 `HTTP 401`（它是 HDX 的预发布分支环境）。正确入口是国家粒度的 `hotosm_chn_points_of_interest`，其 S3 直链公开可下（**762,586 要素 / GeoParquet 101 MB**）。
+>
+> 另有一项**新增的阻塞性发现**：**TripTailor 仓库没有任何许可声明**（GitHub API `license: null`、`/license` 端点 404、全仓库 65 个条目无 LICENSE），而它的 POI 来自第三方站点（含高德）。**在许可澄清之前不应入库**——数据本身可用、字段与论文一致，但缺授权。
+
 ## 0. 一句话结论
 
 **地图能力几乎全免费且质量最好（路线/地理编码/天气/POI 都有官方 MCP）；票务、住宿、UGC 攻略基本没有官方接口，只剩高风险抓取或干脆放弃。** 真正的瓶颈是 POI 搜索配额（个人 100 次/日）和平台条款，不是模型。
