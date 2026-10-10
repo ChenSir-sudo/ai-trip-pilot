@@ -2,32 +2,37 @@
 
 本项目目前只有一位贡献者，但规范仍然要写成文字——因为**半年后的你会忘记当初的约定**，而 AI 协作工具每次都需要重新被告知规则。
 
-## 一、提交信息规范（中英双语）
+## 一、提交信息规范（Conventional Commits · 英文为主）
 
 ### 格式
 
 ```
-<type>(<scope>): <中文简述>
-
-<English summary>
-
-[可选] 中文正文：为什么这么改、影响是什么
-[可选] Footer：Refs / BREAKING CHANGE / Co-authored-by
+<type>(<scope>): <English description>     ← 第 1 行：英文
+                                            ← 空行
+<中文对照>                                  ← 第 3 行：中文
+                                            ← 空行
+[English body]                              ← 可选正文：英文在前
+                                            ← 空行
+[中文正文]                                  ← 可选正文：中文在后
+                                            ← 空行
+[Footer: Refs / BREAKING CHANGE]            ← 可选
 ```
 
 ### 逐行规则
 
 | 行 | 规则 |
 |---|---|
-| **第 1 行** | `<type>(<scope>): <中文简述>`。动词开头，说清「做了什么」。不超过 50 个字符，**结尾不加句号**。这一行是 `git log --oneline` 里唯一可见的内容，必须能独立读懂 |
+| **第 1 行** | `<type>(<scope>): <English description>`。**全英文、纯 ASCII**，祈使语气，首字母小写（专有名词除外），不超过 72 字符，**结尾不加句号** |
 | **第 2 行** | 空行（必需） |
-| **第 3 行** | **英文一句话，与第 1 行语义一致**。首字母大写，结尾不加句号。它是同一件事的英文表述，**不是逐字直译** |
-| **之后** | 空行 + 可选正文。正文写「为什么」而不是「做了什么」（做了什么已经由首行交代）。涉及不明显的取舍时，引用对应的 ADR |
-| **Footer** | 保持英文：`Refs: #12`、`BREAKING CHANGE: ...`、`Co-authored-by: ...` |
+| **第 3 行** | **中文对照**，与首行语义一致，**不带 `type(scope):` 前缀**。它给人读，不参与工具解析 |
+| **之后** | 空行 + 可选正文。正文写「为什么」而不是「做了什么」。**英文段在前、中文段在后**，两段之间空一行 |
+| **Footer** | 保持英文，放在最后：`Refs: #12`、`BREAKING CHANGE: ...`、`Co-authored-by: ...` |
 
-### 为什么这样排布
+### 为什么英文在前
 
-中文在前，因为中文描述承载更多信息量；英文紧随其后，因为它是给非中文读者与工具看的那一半。英文不塞进首行，是为了让 `git log --oneline` 保持整齐单一的语言。
+`git log --oneline`、GitHub 的提交列表以及绝大多数工具**只显示第一行**。把它写成英文，仓库对任何语言的读者都可读；中文对照紧随其后，保证语义精确、不被翻译损失。
+
+这与「文档正文用中文」并不矛盾：**文档是给人从头读的，提交首行是给工具和所有人扫的。**
 
 ### type 取值
 
@@ -46,18 +51,25 @@
 **合格**
 
 ```
-docs(prd): 新增产品文档与架构设计
+docs(prd): add product requirements and architecture design
 
-Add product requirements and architecture design
+新增产品文档与架构设计
+
+Record the three mainlines, eight product redlines and the six-week roadmap,
+together with four ADRs.
 
 明确三条主线、8 条产品红线与 6 周路线图，并同步落盘 4 条 ADR。
 Refs: CONTEXT.md
 ```
 
 ```
-feat(solver): 求解不可行时返回最小冲突约束集
+feat(solver): return minimal conflict sets when infeasible
 
-Return minimal conflict sets when the solver is infeasible
+求解不可行时返回最小冲突约束集
+
+Clarifying questions need to know which constraints collide, not merely that
+no solution exists. This is the only entry point that turns a solver failure
+into a product experience.
 
 澄清问题需要知道「是哪几条约束打架」，而不是只得到「无解」。
 这是把求解失败转成产品体验的唯一入口。
@@ -68,8 +80,9 @@ Refs: ADR-0001
 
 ```
 update files                    ← 无 type、无 scope、无信息量
-fix: 修改了一些东西。             ← 描述空泛、有句号、缺英文行
-feat: add stuff and refactor     ← 一次提交做了两件事，且缺中文行
+fix: fix the thing.             ← 描述空泛、有句号
+fix: 修改了一些东西              ← 首行不是英文（中文对照必须放第 3 行）
+feat: add stuff and refactor    ← 一次提交做了两件事，且缺中文对照
 ```
 
 ## 二、提交粒度

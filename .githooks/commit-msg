@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # 提交信息格式校验钩子
-# 规范见 CONTRIBUTING.md 第一节「提交信息规范（中英双语）」
+# 规范见 CONTRIBUTING.md 第一节「提交信息规范（Conventional Commits · 英文为主）」
 #
 # git 在每次 commit 时调用本脚本，并把提交信息文件的路径作为第一个参数传入。
 # 返回非 0 即拒绝本次提交。可用 git commit --no-verify 绕过。
@@ -24,9 +24,9 @@ fail() {
 	printf '  规范见 CONTRIBUTING.md 第一节。\n' >&2
 	printf '  当前首行：%s\n\n' "$subject" >&2
 	printf '  期望格式：\n' >&2
-	printf '    <type>(<scope>): <中文简述>\n' >&2
+	printf '    <type>(<scope>): <English description>\n' >&2
 	printf '    \n' >&2
-	printf '    <English summary>\n\n' >&2
+	printf '    <中文对照>\n\n' >&2
 	exit 1
 }
 
@@ -36,17 +36,19 @@ case "$subject" in
 esac
 
 printf '%s' "$subject" | grep -Eq "^($types)(\([a-z][a-z-]*\))?: .+" \
-	|| fail "首行须为 <type>(<scope>): <简述>，type 取值为 $types"
+	|| fail "首行须为 <type>(<scope>): <English description>，type 取值为 $types"
 
 case "$subject" in
 	*。|*.) fail "首行结尾不要加句号" ;;
 esac
 
+# 英文为主：首行必须是纯 ASCII。中文对照放第 3 行，不参与工具解析。
 printf '%s' "$subject" | LC_ALL=C grep -q '[^ -~]' \
-	|| fail "首行须用中文书写"
+	&& fail "首行必须是英文（纯 ASCII）——中文对照放第 3 行"
 
 [ -z "$second" ] || fail "第 2 行必须是空行"
 
-[ -n "$third" ] || fail "第 3 行缺失：必须有一行与首行语义一致的英文说明"
+printf '%s' "$third" | LC_ALL=C grep -q '[^ -~]' \
+	|| fail "第 3 行缺失中文对照（英文在前，中文在后）"
 
 exit 0
