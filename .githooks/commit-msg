@@ -1,0 +1,52 @@
+#!/bin/sh
+#
+# 提交信息格式校验钩子
+# 规范见 CONTRIBUTING.md 第一节「提交信息规范（中英双语）」
+#
+# git 在每次 commit 时调用本脚本，并把提交信息文件的路径作为第一个参数传入。
+# 返回非 0 即拒绝本次提交。可用 git commit --no-verify 绕过。
+#
+# 启用（core.hooksPath 不随 clone 传播，每个新克隆都要执行一次）：
+#   git config core.hooksPath .githooks
+
+msg_file="$1"
+
+# 去掉注释行：编辑器模式下 git 会把提示信息以 # 开头写进信息文件
+body=$(sed '/^#/d' "$msg_file")
+subject=$(printf '%s\n' "$body" | sed -n 1p)
+second=$(printf '%s\n' "$body" | sed -n 2p)
+third=$(printf '%s\n' "$body" | sed -n 3p)
+
+types='feat|fix|docs|refactor|test|perf|build|ci|chore|revert'
+
+fail() {
+	printf '\n\xe2\x9c\x96 提交信息不符合规范：%s\n' "$1" >&2
+	printf '  规范见 CONTRIBUTING.md 第一节。\n' >&2
+	printf '  当前首行：%s\n\n' "$subject" >&2
+	printf '  期望格式：\n' >&2
+	printf '    <type>(<scope>): <中文简述>\n' >&2
+	printf '    \n' >&2
+	printf '    <English summary>\n\n' >&2
+	exit 1
+}
+
+# git 自己生成的消息与 fixup/squash 放行；空消息交给 git 自己拒绝
+case "$subject" in
+	Merge*|Revert*|fixup!*|squash!*|"") exit 0 ;;
+esac
+
+printf '%s' "$subject" | grep -Eq "^($types)(\([a-z][a-z-]*\))?: .+" \
+	|| fail "首行须为 <type>(<scope>): <简述>，type 取值为 $types"
+
+case "$subject" in
+	*。|*.) fail "首行结尾不要加句号" ;;
+esac
+
+printf '%s' "$subject" | LC_ALL=C grep -q '[^ -~]' \
+	|| fail "首行须用中文书写"
+
+[ -z "$second" ] || fail "第 2 行必须是空行"
+
+[ -n "$third" ] || fail "第 3 行缺失：必须有一行与首行语义一致的英文说明"
+
+exit 0
