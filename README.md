@@ -2,10 +2,12 @@
 
 **目标形态**：面向多约束行程的出行规划 Agent —— 约束求解 + 检索增强 + 回归评测。
 
-**当前状态**：**第一步**。只有共享状态与一张单节点的最小图，槽位抽取是桩实现，**不调用任何模型、不联网、无数据库**。
+**当前状态**：**第二步**。规划图骨架已端到端跑通——共享状态、条件边、澄清的中断与恢复，以及**真实的模型抽取**（DeepSeek `deepseek-flash` + 严格 schema）。数据访问层、约束求解与评测尚未开始。
 
 > An itinerary planning agent that treats trip planning as a constraint satisfaction problem.
-> Currently at step 1: shared state plus a minimal single-node graph.
+> The graph skeleton runs end to end: shared state, a conditional edge, clarify with
+> interrupt/resume, and real model-based slot extraction. Data access, the constraint
+> solver and evaluation are not started.
 
 ---
 
@@ -28,11 +30,13 @@
 | 部分 | 状态 |
 |---|---|
 | 共享状态 `TripState` + reducer | ✅ 完成 |
-| 最小图（`START → extract_slots → END`） | ✅ 完成 |
-| 槽位抽取 | 🚧 **桩实现**：返回写死的假数据，不调模型 |
-| 条件边（完整性判定与分流） | ⬜ 未开始 |
-| 中断与澄清（挂起 / 恢复） | ⬜ 未开始 |
-| 数据访问层、约束求解、评测 | ⬜ 未开始 |
+| 规划图骨架（条件边 + 澄清循环） | ✅ 完成 |
+| 中断与澄清（挂起 / 恢复） | ✅ 完成 |
+| 模型接入层（可换供应商，注入式） | ✅ 完成 |
+| 槽位抽取（DeepSeek + 严格 schema、失败重试一次） | ✅ 完成 |
+| 数据访问层 | ⬜ 未开始 |
+| 约束求解与红线断言 | ⬜ 未开始 |
+| 评测与消融 | ⬜ 未开始 |
 
 图结构与状态通道的**当前事实**由脚本自动导出，不会过期：[`docs/graph.md`](docs/graph.md)。
 
@@ -46,10 +50,13 @@
 uv venv --python 3.12
 uv pip install -r requirements-dev.txt
 
+# 配置模型（只有跑 src.main 需要；pytest 完全离线）
+cp .env.example .env        # 然后填入 LLM_API_KEY
+
 # 跑一次图（必须在仓库根目录，用 -m 形式）
 python -m src.main
 
-# 跑测试
+# 跑测试（不需要 key，不联网）
 python -m pytest -q
 
 # 重新导出图文档（改过图或状态之后）

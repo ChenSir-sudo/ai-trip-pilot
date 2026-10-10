@@ -3,12 +3,15 @@
 全部零外部依赖：不联网、不调模型、不需要密钥、不需要数据库。
 这是刻意的——图的结构是否正确，与节点内部的实现质量无关，
 所以这部分测试不应该因为模型换供应商而变红。
+
+抽取器是**注入**的，所以这里永远不碰真实模型（见 `_stub_extractor`）。
 """
 
 from __future__ import annotations
 
 from typing import TypedDict
 
+import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
@@ -22,6 +25,14 @@ RAW_REQUEST = "规划一下去上海玩 7 天"
 def _config(thread_id: str) -> dict:
     """同一个 thread_id 才算同一次会话——挂起与恢复靠它配对。"""
     return {"configurable": {"thread_id": thread_id}}
+
+
+def _stub_extractor(raw_request: str) -> dict:
+    """固定返回一份槽位，替代模型。
+
+    它缺出发城市，所以默认会走澄清分支——这正是多数测试要的场景。
+    """
+    return {"destination_city": "上海", "days": 7}
 
 
 # ── 拓扑 ──────────────────────────────────────────────────────────────
@@ -47,7 +58,7 @@ def test_topology_has_a_fork_and_a_clarify_loop():
 
 def test_invoke_keeps_input_and_adds_slots():
     """输入字段不被覆盖，节点返回的增量被合并进来。"""
-    graph = build_graph()
+    graph = build_graph(extractor=_stub_extractor)
 
     result = graph.invoke({"raw_request": RAW_REQUEST}, config=_config("test-merge"))
 
@@ -61,11 +72,58 @@ def test_reducer_field_is_pre_seeded_with_empty_list():
     这条把「写代码时顺手发现的行为」固定成依据：节点读 candidates 时
     可以写成 state["candidates"] 而不必写 .get(..., [])。
     """
-    graph = build_graph()
+    graph = build_graph(extractor=_stub_extractor)
 
     result = graph.invoke({"raw_request": RAW_REQUEST}, config=_config("test-seed"))
 
     assert result["candidates"] == []
+
+
+# ── 抽取器注入 ────────────────────────────────────────────────────────
+
+
+def test_graph_runs_without_any_extractor():
+    """没有抽取器时图照样能跑——这正是它能在没有 key 的机器上运行的原因。
+
+    代价是槽位为空，于是必然走澄清分支。这是一个可预期的降级，不是故障。
+    """
+    graph = build_graph()
+
+    result = graph.invoke({"raw_request": RAW_REQUEST}, config=_config("test-no-extractor"))
+
+    assert result["slots"] == {}
+    assert "__interrupt__" in result
+
+
+def test_user_provided_slots_win_over_extraction():
+    """已给的槽位不被模型的推断改写。
+
+    「用户说过的」比「模型猜的」可信，这条优先级必须固定住。
+    """
+    graph = build_graph(extractor=lambda raw: {"destination_city": "北京", "days": 3})
+
+    result = graph.invoke(
+        {"raw_request": RAW_REQUEST, "slots": {"destination_city": "上海", "days": 5}},
+        config=_config("test-priority"),
+    )
+
+    assert result["slots"]["destination_city"] == "上海"
+    assert result["slots"]["days"] == 5
+
+
+def test_extraction_failure_propagates_instead_of_asking_the_user():
+    """抽取失败要显式失败，不能降级成「问用户出发城市是哪里」。
+
+    静默降级会去问用户刚刚说过的话——那比报错糟得多（与红线 R8 同类）。
+    """
+
+    def boom(raw_request: str) -> dict:
+        raise RuntimeError("模型挂了")
+
+    graph = build_graph(extractor=boom)
+
+    with pytest.raises(RuntimeError, match="模型挂了"):
+        graph.invoke({"raw_request": RAW_REQUEST}, config=_config("test-boom"))
 
 
 # ── reducer ───────────────────────────────────────────────────────────
@@ -102,7 +160,7 @@ def test_merge_candidates_is_idempotent():
 
 def test_first_invoke_suspends_at_clarify():
     """信息不全时是**挂起**，不是结束——而且是正常返回，不是抛异常。"""
-    graph = build_graph()
+    graph = build_graph(extractor=_stub_extractor)
     config = _config("test-suspend")
 
     result = graph.invoke({"raw_request": RAW_REQUEST}, config=config)
@@ -118,7 +176,7 @@ def test_first_invoke_suspends_at_clarify():
 
 def test_resume_with_the_answer_finishes():
     """答复之后从断点继续，并真的把答复写进了槽位。"""
-    graph = build_graph()
+    graph = build_graph(extractor=_stub_extractor)
     config = _config("test-resume")
     graph.invoke({"raw_request": RAW_REQUEST}, config=config)
 
@@ -131,7 +189,7 @@ def test_resume_with_the_answer_finishes():
 
 def test_incomplete_answer_suspends_again():
     """澄清是个循环：答复没能补齐，就再问一次。"""
-    graph = build_graph()
+    graph = build_graph(extractor=_stub_extractor)
     config = _config("test-loop")
     graph.invoke({"raw_request": RAW_REQUEST}, config=config)
 
@@ -145,7 +203,7 @@ def test_keys_that_were_not_asked_are_ignored():
 
     允许任意键写入，等于给调用方开了一条绕过抽取通道、直接篡改槽位的路。
     """
-    graph = build_graph()
+    graph = build_graph(extractor=_stub_extractor)
     config = _config("test-keys")
     graph.invoke({"raw_request": RAW_REQUEST}, config=config)
 

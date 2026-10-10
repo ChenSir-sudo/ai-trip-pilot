@@ -1,14 +1,17 @@
 """规划图的组装：注册节点、连接边。
 
 位置：决策层。图的形状见 docs/architecture.md §3。
-可测试性：不联网、不调模型、不需要任何密钥——没有模型也能构建并跑通这张图。
-不做的事：不读写存储（那属于节点内部）。
+可测试性：不联网、不调模型、不需要任何密钥——**模型调用以参数注入**，
+    所以没有 key 的机器也能构建并跑通这张图。
+不做的事：不读写存储（那属于节点内部）；不决定用哪家模型（那是 src/llm 的事）。
 
 骨架会继续长大，节点函数目前都堆在这个文件里；等它开始妨碍阅读时
 （大约再有两三个节点），应当拆成独立的 nodes 模块。
 """
 
 from __future__ import annotations
+
+from typing import Any, Callable
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -17,24 +20,35 @@ from langgraph.types import interrupt
 from src.graph.completeness import find_missing_slots
 from src.graph.state import TripState
 
+# 出行需求原文 → 槽位 dict。由调用方注入，图本身不知道它背后是不是模型。
+Extractor = Callable[[str], dict[str, Any]]
 
-def extract_slots(state: TripState) -> dict:
-    """把出行需求原文抽成结构化槽位。
+
+def make_extract_slots(extractor: Extractor | None):
+    """构造抽取节点。
 
     位置：规划图的第一个节点。
-    副作用：无。不读存储、不发请求。
-    幂等性：是。
-    失败模式：不抛异常。
+    副作用：取决于注入的 `extractor`——真实抽取器会发起模型请求。
+    幂等性：取决于 `extractor`。
+    失败模式：`extractor` 抛出的异常原样向上传播，**本节点不吞异常**。
+        抽取失败时宁可让流程显式失败，也不要返回空槽位去问用户
+        「出发城市是哪里」——那是用户刚刚说过的话。
 
-    ⚠️ 本步仍是桩实现：不调用模型，返回固定槽位，只为验证结构。
-
-    但它已经体现了一条真实约束：**只补充，不覆盖用户已给的槽位**。
-    用户明确填过的值不该被模型的推断改写——真抽取也必须守这条。
+    `extractor=None` 表示不抽取：状态里只保留调用方已填的槽位。
+    这样图可以在没有 API key 的机器上构建与运行，测试也不会联网。
     """
-    user_slots = state.get("slots") or {}
-    stub_slots = {"destination_city": "上海", "days": 7}
-    # 用户值放在后面，因此优先。
-    return {"slots": {**stub_slots, **user_slots}}
+
+    def extract_slots(state: TripState) -> dict:
+        """把出行需求原文抽成结构化槽位。"""
+        user_slots = state.get("slots") or {}
+        raw_request = state.get("raw_request") or ""
+
+        extracted = extractor(raw_request) if extractor else {}
+
+        # 用户值放在后面，因此优先：用户明确填过的值不该被模型的推断改写。
+        return {"slots": {**extracted, **user_slots}}
+
+    return extract_slots
 
 
 def check_completeness(state: TripState) -> dict:
@@ -102,7 +116,7 @@ def clarify(state: TripState) -> dict:
     # 只接受问过的键。答复是**受控接口**，不是第二个入口：允许任意键写入
     # 等于给调用方开了一条绕过抽取通道、直接篡改槽位的路。
     # 代价是用户主动多说的内容（"顺便说下预算五千"）会被丢掉——那属于抽取
-    # 通道的职责；将来若需要，应当把补充文本重新送给 extract_slots。
+    # 通道的职责；将来若需要，应当把补充文本重新送给抽取节点。
     asked = {key for item in pending for key in item["keys"]}
     accepted = {key: value for key, value in (answer or {}).items() if key in asked}
 
@@ -112,15 +126,19 @@ def clarify(state: TripState) -> dict:
     }
 
 
-def build_graph():
+def build_graph(*, extractor: Extractor | None = None):
     """组装并编译规划图。
 
+    参数：
+      extractor：出行需求原文 → 槽位。`None` 表示不抽取（离线与测试用）；
+          生产入口 `src/main.py` 传入真实的模型抽取器。
+
     可测试性：返回的图带内存 checkpointer，可以在没有模型密钥的机器上直接 invoke。
-    注意 checkpointer 现在是**必需**的：图里有挂起点，去掉它就无法恢复。
+    注意 checkpointer 是**必需**的：图里有挂起点，去掉它就无法恢复。
     """
     builder = StateGraph(TripState)
 
-    builder.add_node("extract_slots", extract_slots)
+    builder.add_node("extract_slots", make_extract_slots(extractor))
     builder.add_node("check_completeness", check_completeness)
     builder.add_node("clarify", clarify)
 

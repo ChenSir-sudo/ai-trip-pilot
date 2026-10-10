@@ -1,2 +1,5 @@
 # 运行时依赖（只列直接依赖，不列传递依赖）
 langgraph>=1.2,<2
+openai>=1.40
+pydantic>=2.7
+python-dotenv>=1.0

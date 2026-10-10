@@ -42,7 +42,7 @@
 
 与本项目的结构对应：
 
-`context`（词汇表）｜ `prd` ｜ `arch` ｜ `adr` ｜ `research` ｜ `shell`（编排外壳）｜ `graph`（规划图）｜ `solver`（约束求解）｜ `verify`（红线断言）｜ `data`（数据访问层）｜ `memory` ｜ `eval` ｜ `web` ｜ `deps` ｜ `repo`
+`context`（词汇表）｜ `prd` ｜ `arch` ｜ `adr` ｜ `research` ｜ `llm`（模型接入）｜ `shell`（编排外壳）｜ `graph`（规划图）｜ `solver`（约束求解）｜ `verify`（红线断言）｜ `data`（数据访问层）｜ `memory` ｜ `eval` ｜ `web` ｜ `deps` ｜ `repo`
 
 改动跨多个模块时可省略 scope，例如 `docs: ...`。
 
