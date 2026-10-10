@@ -90,6 +90,7 @@ feat: add stuff and refactor     ← 一次提交做了两件事，且缺中文�
 - 产品决策写进 [docs/prd.md](./docs/prd.md)，实现细节写进 [docs/architecture.md](./docs/architecture.md)，**词汇表只放词汇**。三者的边界不要互相污染。
 - 任何**不可逆**且**反直觉**的决策，补一条 [ADR](./docs/adr/)。判断标准见 [ADR 格式说明](https://github.com/joelparkerhenderson/architecture-decision-record)：难以回退、外人会问「为什么这么做」、且当时存在真实的替代方案——三条同时满足才写。
 - 文档中引用的任何数字必须带出处（指向 [docs/research/](./docs/research/) 中的报告）。**没测过的写「未测」，不写估计值。**
+- **代码注释遵循 [docs/code-comments.md](./docs/code-comments.md)**：注释是第五层文档，不复述上层内容，只写「为什么」与契约。术语必须用 CONTEXT.md 的词，`_Avoid_` 列出的同义词出现在注释里即为违规。
 
 ## 五、提交钩子（第一节规范的自动校验）
 
