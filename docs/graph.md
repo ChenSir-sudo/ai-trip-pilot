@@ -6,8 +6,8 @@
 > python -m scripts.export_graph
 > ```
 >
-> - 生成时间：2026-10-10 17:22:08
-> - 生成自提交：`7c2ec08`（生成时代码有未提交改动，本文件可能与你看到的代码不一致）
+> - 生成时间：2026-10-12 15:25:26
+> - 生成自提交：`4755331`（生成时代码已全部提交）
 > - 内容全部从代码推导；本文件里没有任何手写的节点名或字段名
 
 ## 一、拓扑
@@ -25,12 +25,14 @@ graph TD;
 	extract_slots(extract_slots)
 	check_completeness(check_completeness)
 	clarify(clarify)
+	build_candidate_pool(build_candidate_pool)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> extract_slots;
-	check_completeness -. &nbsp;ready&nbsp; .-> __end__;
+	check_completeness -. &nbsp;ready&nbsp; .-> build_candidate_pool;
 	check_completeness -.-> clarify;
 	clarify --> check_completeness;
 	extract_slots --> check_completeness;
+	build_candidate_pool --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
 	classDef last fill:#bfb6fc
@@ -45,6 +47,7 @@ graph TD;
 |---|---|---|
 | `candidates` | **合并** | merge_candidates |
 | `clarify_question` | **覆盖** | 后写的整体替换先写的 |
+| `data_notes` | **合并** | add |
 | `missing_slots` | **覆盖** | 后写的整体替换先写的 |
 | `raw_request` | **覆盖** | 后写的整体替换先写的 |
 | `slots` | **覆盖** | 后写的整体替换先写的 |
@@ -57,6 +60,7 @@ graph TD;
 
 | 节点 | 文档字符串首行 |
 |---|---|
+| `build_candidate_pool` | 按目的地取回候选，并把来源与能力边界写进状态。 |
 | `check_completeness` | 判定槽位够不够开始规划，并把缺失项写进状态。 |
 | `clarify` | 向用户提问并挂起，等答复后把答复回填进槽位。 |
 | `extract_slots` | 把出行需求原文抽成结构化槽位。 |
@@ -120,6 +124,13 @@ graph TD;
         "type": "object"
       },
       "title": "Candidates",
+      "type": "array"
+    },
+    "data_notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Data Notes",
       "type": "array"
     }
   },

@@ -95,7 +95,27 @@ def test_an_unavailable_category_is_recorded_and_does_not_abort():
     out = run_node(data, {"destination_city": "杭州"})
 
     assert [c["id"] for c in out["candidates"]] == ["a:1"], "其余类别照常取回"
-    assert sum("不可用" in note for note in out["data_notes"]) == 2
+    # 只数「不可用」的独立记录，不要数覆盖度那一行——它里面也含这三个字
+    independent = [n for n in out["data_notes"] if not n.startswith("各类别取回")]
+    assert sum("不可用" in note for note in independent) == 2
+    coverage = next(n for n in out["data_notes"] if n.startswith("各类别取回"))
+    assert "hotel 不可用" in coverage and "restaurant 不可用" in coverage
+
+
+def test_coverage_note_shows_how_many_each_category_returned():
+    """「全是餐厅」有两种原因：词表不匹配，或数据本来如此。**处置方式完全不同**，
+    所以取回条数要写出来。
+    """
+    data = FakeDataAccess(
+        [make_place("a:1", category="restaurant"), make_place("a:2", category="museum")]
+    )
+
+    out = run_node(data, {"destination_city": "杭州"})
+
+    coverage = next(n for n in out["data_notes"] if n.startswith("各类别取回"))
+    assert "attraction 0" in coverage
+    assert "restaurant 1" in coverage
+    assert "museum 1" in coverage
 
 
 def test_empty_result_is_recorded_rather_than_looking_like_a_normal_empty_pool():

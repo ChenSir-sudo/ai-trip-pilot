@@ -79,13 +79,20 @@ def make_build_candidate_pool(
             notes.append(f"地名解析没有得到 {city} 的中心点，仍按城市名检索")
         notes.append(f"数据源：{data.describe()}")
 
+        coverage: list[str] = []
         for category in category_list:
             try:
-                found.extend(
-                    data.search_place(city=city, category=category, limit=per_category)
-                )
+                hits = data.search_place(city=city, category=category, limit=per_category)
             except CapabilityUnavailable as exc:
+                coverage.append(f"{category} 不可用")
                 notes.append(f"类别「{category}」不可用：{exc}")
+                continue
+            found.extend(hits)
+            coverage.append(f"{category} {len(hits)}")
+
+        # 把各类别的取回条数写出来。**没有它，「候选池里全是餐厅」看不出是词表不匹配
+        # 还是数据本来如此**——而这两种原因的处置方式完全不同。
+        notes.append("各类别取回：" + " / ".join(coverage))
 
         # 去重并按 id 定序：同一份输入必须得到同一批候选，否则回归评测不可比。
         # 去重也在这里做一次——reducer 会兜底，但 `max_total` 得按**去重后**的条数算。
