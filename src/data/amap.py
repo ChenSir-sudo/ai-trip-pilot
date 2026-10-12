@@ -82,7 +82,7 @@ def make_httpx_fetcher(timeout: float = 10.0) -> Fetcher:
     return fetch
 
 
-def _text(value: Any) -> str | None:
+def _optional_str(value: Any) -> str | None:
     """把可能缺失的字符串字段读成 `str | None`。
 
     > 这是高德的一个**已知类型陷阱**，官方原文：「部分返回值当返回值存在时，将以
@@ -101,7 +101,7 @@ def _location(raw: Any) -> LatLon | None:
     > **注意顺序是「经度在前」**，与其他接口常见的 lat,lon 相反。写反了不会报错，
     > 只会让所有距离都离谱——而那种错误在没有断言的地方看不出来。
     """
-    text = _text(raw)
+    text = _optional_str(raw)
     if not text or "," not in text:
         return None
     lon_s, lat_s = text.split(",", 1)
@@ -151,7 +151,7 @@ class AmapRepository:
         payload = self._fetch(f"{BASE_URL}/{path}", {**params, "key": self._key, "output": "JSON"})
 
         if payload.get("status") != "1":
-            code, info = _text(payload.get("infocode")), _text(payload.get("info"))
+            code, info = _optional_str(payload.get("infocode")), _optional_str(payload.get("info"))
             # 10001 = INVALID_USER_KEY。**这是本次唯一实测拿到的错误码**：无 key 请求
             # 托管端返回的就是它（见 2026-amap-mcp-integration.md §1.4）。映射成
             # 「缺凭据」而不是「上游故障」，因为要做的事完全不同：去填 .env，不是查状态页。
@@ -163,6 +163,11 @@ class AmapRepository:
     # ── 六个能力 ────────────────────────────────────────────────────
 
     def describe(self) -> str:
+        """一句话说明当前实现。
+
+        契约：无副作用。**这句话会被打印给用户**，所以它同时承担协议 7.7 条要求的
+        来源署名——「来源必须可见」在这里落地。
+        """
         return "高德 Web 服务（实时调用，不缓存）——数据版权归高德所有"
 
     def search_place(
@@ -235,14 +240,14 @@ class AmapRepository:
         if point is None:
             return None
 
-        adcode = _text(first.get("adcode"))
+        adcode = _optional_str(first.get("adcode"))
         return Place(
             id=f"{SOURCE}:geo:{adcode or 'unknown'}:{point.lon},{point.lat}",
             name=name,
             lat=point.lat,
             lon=point.lon,
-            category=_text(first.get("level")),
-            city=_text(first.get("city")),
+            category=_optional_str(first.get("level")),
+            city=_optional_str(first.get("city")),
             adcode=adcode,
             provenance=self._provenance(),
         )
@@ -305,7 +310,7 @@ class AmapRepository:
                 return WeatherReport(
                     adcode=adcode,
                     date=date,
-                    text=_text(cast.get("dayweather")) or "未知",
+                    text=_optional_str(cast.get("dayweather")) or "未知",
                     temp_min_c=_as_float(cast.get("nighttemp")),
                     temp_max_c=_as_float(cast.get("daytemp")),
                     provenance=self._provenance(),
@@ -348,18 +353,18 @@ class AmapRepository:
         if point is None:
             raise UpstreamError(f"POI 缺少可用坐标：{poi.get('name')!r}")
 
-        poi_id = _text(poi.get("id"))
+        poi_id = _optional_str(poi.get("id"))
         if not poi_id:
             raise UpstreamError(f"POI 缺少 id，A1 无法按 ID 命中：{poi.get('name')!r}")
 
         return Place(
             id=f"{SOURCE}:{poi_id}",
-            name=_text(poi.get("name")) or "(无名)",
+            name=_optional_str(poi.get("name")) or "(无名)",
             lat=point.lat,
             lon=point.lon,
-            category=_text(poi.get("type")),
-            city=_text(poi.get("cityname")),
-            adcode=_text(poi.get("adcode")),
+            category=_optional_str(poi.get("type")),
+            city=_optional_str(poi.get("cityname")),
+            adcode=_optional_str(poi.get("adcode")),
             provenance=self._provenance(),
         )
 

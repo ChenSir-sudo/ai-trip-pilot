@@ -11,6 +11,8 @@ from __future__ import annotations
 import operator
 from typing import Annotated, Any, TypedDict
 
+from src.data.types import Candidate
+
 
 class MissingRequirement(TypedDict):
     """一个缺失项。
@@ -85,7 +87,7 @@ class TripState(TypedDict, total=False):
     # 由 build_candidate_pool 写入，内容是数据访问层的返回。挂在 merge_candidates 上，
     # 因为图里有循环、将来还会有并行扇出，同一个节点会跑多次；直接拼接会产生重复 ID，
     # 让红线 A1（按 ID 命中）失去意义。
-    candidates: Annotated[list[dict], merge_candidates]
+    candidates: Annotated[list[Candidate], merge_candidates]
 
     # ── 数据源的能力边界与降级记录：累积型 ──
     # 例如「离线侧类别 X 不可用」「候选被截断」。**累积**，所以挂 operator.add：

@@ -77,26 +77,29 @@ def test_iter_features_handles_an_empty_collection():
 
 
 def test_point_geometry_uses_its_coordinates():
-    lat, lon = representative_point({"type": "Point", "coordinates": [120.1, 30.2]})
+    point = representative_point({"type": "Point", "coordinates": [120.1, 30.2]})
 
-    assert (lat, lon) == (30.2, 120.1)
+    assert point is not None
+    assert (point.lat, point.lon) == (30.2, 120.1)
 
 
 def test_polygon_uses_the_mean_of_its_outer_ring():
     ring = [[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0], [0.0, 0.0]]
 
-    lat, lon = representative_point({"type": "Polygon", "coordinates": [ring]})
+    point = representative_point({"type": "Polygon", "coordinates": [ring]})
 
-    assert (round(lat, 3), round(lon, 3)) == (0.8, 0.8)
+    assert point is not None
+    assert (round(point.lat, 3), round(point.lon, 3)) == (0.8, 0.8)
 
 
 def test_multipolygon_uses_its_first_polygon():
     ring = [[10.0, 20.0], [12.0, 20.0], [12.0, 22.0], [10.0, 22.0]]
     geom = {"type": "MultiPolygon", "coordinates": [[ring]]}
 
-    lat, lon = representative_point(geom)
+    point = representative_point(geom)
 
-    assert (round(lat, 1), round(lon, 1)) == (21.0, 11.0)
+    assert point is not None
+    assert (round(point.lat, 1), round(point.lon, 1)) == (21.0, 11.0)
 
 
 @pytest.mark.parametrize(
@@ -122,15 +125,14 @@ def test_to_row_maps_the_osm_tags_we_need():
     assert skip == ""
     assert disambiguated is False
     assert row is not None
-    place_id, name, lat, lon, category, city, adcode, opening, price = row
-    assert place_id == "osm:node/1"
-    assert name == "西湖"
-    assert (round(lat, 4), round(lon, 4)) == (30.2489, 120.141)
-    assert category == "park"
-    assert city == "杭州市"
-    assert adcode is None, "OSM 导出没有可信的 adcode，留空而不是编一个"
-    assert opening is None
-    assert price is None
+    assert row.id == "osm:node/1"
+    assert row.name == "西湖"
+    assert (round(row.lat, 4), round(row.lon, 4)) == (30.2489, 120.141)
+    assert row.category == "park"
+    assert row.city == "杭州市"
+    assert row.adcode is None, "OSM 导出没有可信的 adcode，留空而不是编一个"
+    assert row.opening_hours is None
+    assert row.price is None
 
 
 def test_duplicate_ids_are_disambiguated_and_reported():
@@ -145,8 +147,8 @@ def test_duplicate_ids_are_disambiguated_and_reported():
     second, dup2, _ = to_row(feature(id="node/7", properties={"name": "另一个"}), used)
 
     assert first is not None and second is not None
-    assert first[0] == "osm:node/7"
-    assert second[0] == "osm:node/7#2"
+    assert first.id == "osm:node/7"
+    assert second.id == "osm:node/7#2"
     assert (dup1, dup2) == (False, True)
 
 
@@ -155,13 +157,13 @@ def test_category_falls_back_across_the_four_mutually_exclusive_tags():
     keys = ("amenity", "man_made", "shop", "tourism")
     for key in keys:
         row, _, _ = to_row(feature(properties={"name": "X", key: key + "-value"}), {})
-        assert row is not None and row[4] == key + "-value"
+        assert row is not None and row.category == key + "-value"
 
 
 def test_name_falls_back_to_the_chinese_tag():
     row, _, _ = to_row(feature(properties={"name_zh": "西湖", "adm2_name": "杭州市"}), {})
 
-    assert row is not None and row[1] == "西湖"
+    assert row is not None and row.name == "西湖"
 
 
 @pytest.mark.parametrize(

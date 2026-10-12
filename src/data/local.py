@@ -136,6 +136,11 @@ class LocalSnapshotRepository:
     # ── 六个能力 ────────────────────────────────────────────────────
 
     def describe(self) -> str:
+        """一句话说明当前实现。
+
+        契约：无副作用（只读一次计数）。**这句话会被打印给用户**，并按红线 R7
+        带上「示例数据」与快照日期。
+        """
         with self._connect() as conn:
             n = conn.execute("SELECT COUNT(*) AS c FROM places").fetchone()["c"]
         return (
@@ -272,6 +277,13 @@ class LocalSnapshotRepository:
         )
 
     def lookup_area(self, *, adcode: str) -> AreaInfo | None:
+        """按行政区划代码查行政区。
+
+        契约：
+          失败模式：查不到返回 `None`。**离线快照的 `areas` 表通常是空的**——
+              离线侧没有许可明确的行政区划来源（见 data/README.md），此时本方法
+              恒返回 `None`。这**不是**能力边界：能力是有的，只是没有数据。
+        """
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM areas WHERE adcode = ?", (adcode,)).fetchone()
         if row is None:

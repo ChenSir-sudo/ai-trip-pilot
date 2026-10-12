@@ -14,8 +14,10 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import TypedDict
+from typing import TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Provenance(BaseModel):
@@ -32,6 +34,19 @@ class Provenance(BaseModel):
     as_of: str = Field(description="取数时间，ISO 8601。离线快照填快照日期")
     is_sample: bool = Field(description="True = 离线快照，界面必须标注「示例数据」")
     license: str = Field(description='许可标识，如 "ODbL-1.0" / "amap-terms"')
+
+    @field_validator("source", "license")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        """来源与许可**不许为空串**。
+
+        红线 A8 要求每条事实带来源标记。只把 `provenance` 设成必填还不够——
+        `source=""` 也能构造出来，而那在界面上等同于「没有来源」。校验器把
+        「有字段」提升到「字段有值」。
+        """
+        if not value.strip():
+            raise ValueError("来源标识不能为空")
+        return value.strip()
 
 
 class LatLon(BaseModel):
@@ -64,7 +79,7 @@ class Place(BaseModel):
     price: float | None = None
     provenance: Provenance
 
-    def to_candidate(self) -> dict:
+    def to_candidate(self) -> Candidate:
         """转成候选池里的一条记录（进图状态那一份）。
 
         契约：
@@ -90,6 +105,35 @@ class Place(BaseModel):
             "is_sample": self.provenance.is_sample,
             "license": self.provenance.license,
         }
+
+
+class Candidate(TypedDict):
+    """候选池里的一条记录（进图状态的那一份）。
+
+    > **为什么要有这个类型**：`to_candidate()` 把 `Provenance` 摊成四个平键，
+    > 而摊平后的形状原本只靠一处函数与一处消费点（`src/main.py` 的打印）维持。
+    > 类型化之后，字段清单只有一处定义，两边对不上就在类型检查阶段暴露。
+    >
+    > 为什么摊平而不是嵌套：状态要过 checkpointer，**嵌套的 Pydantic 对象需要
+    > 自定义序列化器**，摊平后的 dict 在所有实现下都安全。
+
+    来源字段（`source` / `as_of` / `is_sample` / `license`）**是必填键**：
+    红线 A8 与 R7 靠它们落地，缺了就不该能构造出一个候选。
+    """
+
+    id: str
+    name: str
+    lat: float
+    lon: float
+    category: str | None
+    city: str | None
+    adcode: str | None
+    opening_hours: str | None
+    price: float | None
+    source: str
+    as_of: str
+    is_sample: bool
+    license: str
 
 
 class RouteMode(str, Enum):

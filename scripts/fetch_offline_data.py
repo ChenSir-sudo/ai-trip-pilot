@@ -25,12 +25,14 @@ import sys
 import urllib.request
 import zipfile
 from collections.abc import Iterator
+from typing import NamedTuple
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data.local import SCHEMA_SQL  # noqa: E402
+from src.data.types import LatLon  # noqa: E402
 
 # 已实测可下（HTTP 206 range 请求）的直链。**不要用 data.humdata.org 的数据集页**：
 # 它对脚本请求返回 AWS WAF 的人机挑战（HTTP 202）。
@@ -39,6 +41,24 @@ DEFAULT_URL = (
     "hotosm_chn_points_of_interest_osm_geojson.zip"
 )
 DEFAULT_OUT = Path("data/offline/places.sqlite")
+
+class PlaceRow(NamedTuple):
+    """`places` 表的一行。
+
+    用 NamedTuple 而不是裸 tuple：`INSERT ... VALUES (?,?,...)` 需要序列，而统计代码
+    需要按名字读字段。**裸位置下标 `row[4]` 在列序变动时会静默读错列**。
+    """
+
+    id: str
+    name: str
+    lat: float
+    lon: float
+    category: str | None
+    city: str | None
+    adcode: str | None
+    opening_hours: str | None
+    price: float | None
+
 
 # 类别来自 OSM 的四个互斥标签：同一要素通常只带其中一个，所以要挨个取第一个非空。
 _CATEGORY_KEYS = ("amenity", "man_made", "shop", "tourism")
@@ -92,8 +112,8 @@ def iter_features(stream: io.BufferedIOBase) -> Iterator[dict[str, Any]]:
             yield obj
 
 
-def representative_point(geometry: dict[str, Any]) -> tuple[float, float] | None:
-    """从一个几何体取一个代表点 `(lat, lon)`。
+def representative_point(geometry: dict[str, Any]) -> LatLon | None:
+    """从一个几何体取一个代表点。
 
     契约：
       副作用：无。纯函数。
@@ -107,8 +127,7 @@ def representative_point(geometry: dict[str, Any]) -> tuple[float, float] | None
     coords = geometry.get("coordinates")
 
     if gtype == "Point" and isinstance(coords, list) and len(coords) >= 2:
-        lon, lat = coords[0], coords[1]
-        return (float(lat), float(lon))
+        return LatLon(lat=float(coords[1]), lon=float(coords[0]))
 
     if gtype == "Polygon" and isinstance(coords, list) and coords:
         ring = coords[0]
@@ -123,12 +142,12 @@ def representative_point(geometry: dict[str, Any]) -> tuple[float, float] | None
     lats = [p[1] for p in ring if isinstance(p, list) and len(p) >= 2]
     if not lons or not lats:
         return None
-    return (sum(lats) / len(lats), sum(lons) / len(lons))
+    return LatLon(lat=sum(lats) / len(lats), lon=sum(lons) / len(lons))
 
 
 def to_row(
     feature: dict[str, Any], used_ids: dict[str, int]
-) -> tuple[tuple[Any, ...] | None, bool, str]:
+) -> tuple[PlaceRow | None, bool, str]:
     """把一条 feature 转成 `places` 表的一行。
 
     返回 `(行, 是否做了 id 消歧, 跳过原因)`；行是 `None` 时第三个值是原因
@@ -154,7 +173,6 @@ def to_row(
     point = representative_point(geometry if isinstance(geometry, dict) else {})
     if point is None:
         return None, False, "no_geometry"
-    lat, lon = point
 
     raw_id = feature.get("id") or props.get("id")
     if raw_id in (None, ""):
@@ -169,7 +187,18 @@ def to_row(
     city = props.get("adm2_name") or None
     opening = props.get("opening_hours") or None
 
-    return (place_id, name, lat, lon, category, city, None, opening, None), seen > 1, ""
+    row = PlaceRow(
+        id=place_id,
+        name=name,
+        lat=point.lat,
+        lon=point.lon,
+        category=category,
+        city=city,
+        adcode=None,
+        opening_hours=opening,
+        price=None,
+    )
+    return row, seen > 1, ""
 
 
 def build_snapshot(
@@ -219,9 +248,9 @@ def build_snapshot(
             conn.execute("INSERT INTO places VALUES (?,?,?,?,?,?,?,?,?)", row)
             stats["loaded"] += 1
             stats["disambiguated_ids"] += int(disambiguated)
-            stats["with_opening_hours"] += int(row[7] is not None)
-            stats["with_city"] += int(row[5] is not None)
-            stats["with_category"] += int(row[4] is not None)
+            stats["with_opening_hours"] += int(row.opening_hours is not None)
+            stats["with_city"] += int(row.city is not None)
+            stats["with_category"] += int(row.category is not None)
         conn.commit()
     finally:
         conn.close()
@@ -271,6 +300,13 @@ def _open_features(from_file: Path | None, url: str) -> Iterator[dict[str, Any]]
 
 
 def main(argv: list[str] | None = None) -> int:
+    """抓取并落盘，返回进程退出码。
+
+    契约：
+      副作用：**下载（或读本地文件）并覆盖写 `--out`**。
+      失败模式：网络不可达或文件不是合法 GeoJSON 时向上抛——**不写半个快照**
+          （先写临时文件再替换）。
+    """
     parser = argparse.ArgumentParser(prog="python -m scripts.fetch_offline_data")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--url", default=DEFAULT_URL)
