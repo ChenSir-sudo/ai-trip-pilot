@@ -35,6 +35,7 @@ python -m scripts.fetch_offline_data --limit 400  # 只取前若干条，够开�
 | `adm2_name` | 是**罗马音**（`Harbin`） | **按中文城市名检索取不到结果** |
 | `adm2_pcode` | 有（缺失 1.4%） | 但它是 OCHA/HDX 的编码，**不是高德 adcode**，两套不混用 |
 | 行政区划 | 无许可明确的来源 | `areas` 表为空，`lookup_area` 返回 `None` |
+| **天气** | **抓取脚本不抓天气** | `weather` 表恒为空 → **离线天气恒抛「能力不可用」** |
 
 `RouteResult.basis` 在离线侧恒为 `STRAIGHT_LINE_ESTIMATE`：离线只能给直线距离乘未标定
 系数，**那不是路网耗时**。A4 只能用真实实现的 `ROAD_NETWORK` 结果断言，离线值可以跑通
