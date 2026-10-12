@@ -2,12 +2,15 @@
 
 **目标形态**：面向多约束行程的出行规划 Agent —— 约束求解 + 检索增强 + 回归评测。
 
-**当前状态**：**第二步**。规划图骨架已端到端跑通——共享状态、条件边、澄清的中断与恢复，以及**真实的模型抽取**（DeepSeek `deepseek-flash` + 严格 schema）。数据访问层、约束求解与评测尚未开始。
+**当前状态**：**第三步**。规划图骨架端到端跑通——共享状态、条件边、澄清的挂起与恢复，**真实的模型抽取**（DeepSeek `deepseek-flash` + 严格 schema）；数据访问层已接上，槽位补齐后会**取回候选池并打印每条来源**。约束求解、评测与界面尚未开始。
+
+> **离线侧红线覆盖说明**：离线快照的营业时间缺失约 98%，所以**断言 A3（停靠点在营业时间内）在离线路径上做不了**，必须记账而不是让它悄悄通过。已知缺口列在 [`data/README.md`](data/README.md)。
 
 > An itinerary planning agent that treats trip planning as a constraint satisfaction problem.
 > The graph skeleton runs end to end: shared state, a conditional edge, clarify with
-> interrupt/resume, and real model-based slot extraction. Data access, the constraint
-> solver and evaluation are not started.
+> interrupt/resume, and real model-based slot extraction. The data access layer is wired
+> in, so a completed request yields a candidate pool with per-record provenance. The
+> constraint solver, evaluation and UI are not started.
 
 ---
 
@@ -34,7 +37,8 @@
 | 中断与澄清（挂起 / 恢复） | ✅ 完成 |
 | 模型接入层（可换供应商，注入式） | ✅ 完成 |
 | 槽位抽取（DeepSeek + 严格 schema、失败重试一次） | ✅ 完成 |
-| 数据访问层 | ⬜ 未开始 |
+| 数据访问层（接口 + 离线快照 + 高德 REST） | ✅ 完成 |
+| 候选池节点（槽位齐 → 取回候选并打印来源） | ✅ 完成 |
 | 约束求解与红线断言 | ⬜ 未开始 |
 | 评测与消融 | ⬜ 未开始 |
 
@@ -52,6 +56,9 @@ uv pip install -r requirements-dev.txt
 
 # 配置模型（只有跑 src.main 需要；pytest 完全离线）
 cp .env.example .env        # 然后填入 LLM_API_KEY
+
+# 抓一份离线快照（离线实现要用它；不入库，见 data/README.md）
+python -m scripts.fetch_offline_data --limit 400
 
 # 跑一次图（必须在仓库根目录，用 -m 形式）
 python -m src.main
