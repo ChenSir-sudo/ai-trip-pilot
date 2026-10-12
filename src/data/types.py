@@ -100,6 +100,18 @@ class RouteMode(str, Enum):
     TRANSIT = "transit"
 
 
+class RouteBasis(str, Enum):
+    """一段耗时是**怎么算出来的**。
+
+    > 这个字段是补上的：写离线实现时才发现，离线侧只能给「直线距离 × 经验系数」，
+    > 而那与路网算出来的耗时**不是同一个量**。没有这个字段，两者会在状态里混成
+    > 一个数字，A4（单日移动总时长）就会拿估算值当实测值断言——**而且不报错**。
+    """
+
+    ROAD_NETWORK = "road_network"
+    STRAIGHT_LINE_ESTIMATE = "straight_line_estimate"
+
+
 class RouteResult(BaseModel):
     """一段路线。"""
 
@@ -110,6 +122,9 @@ class RouteResult(BaseModel):
     mode: RouteMode
     distance_m: int
     duration_s: int
+    basis: RouteBasis = Field(
+        description="计算依据。离线快照恒为直线估算，调用方据此决定能不能拿它断言"
+    )
     provenance: Provenance
 
 
