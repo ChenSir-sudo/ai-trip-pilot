@@ -1,6 +1,7 @@
 """候选池节点的测试。
 
 离线：数据源是 `tests/fakes.py` 里的假实现，不需要网络、快照或密钥。
+不做的事：不测检索质量，只测节点行为与能力边界是否可见。
 """
 
 from __future__ import annotations

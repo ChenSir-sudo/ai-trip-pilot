@@ -24,6 +24,21 @@ from src.data.types import (
 )
 
 
+def require_search_terms(*, keywords: str | None, category: str | None) -> None:
+    """校验检索参数。
+
+    契约：
+      副作用：无。纯函数。
+      失败模式：两个都为空时抛 `ValueError`——这是调用方的编程错误，不是上游问题。
+
+    > **两份实现共用这一处**。原先这条校验在 `local.py` 与 `amap.py` 里各写了一遍，
+    > 而契约只写在文档里：**两处对「什么算合法调用」的判断迟早会分叉**，分叉的表现
+    > 是同一个调用在一份实现上正常、在另一份上报错。
+    """
+    if not keywords and not category:
+        raise ValueError("检索要求 keywords 与 category 至少给一个（契约见 base.py）")
+
+
 @runtime_checkable
 class DataAccess(Protocol):
     """六个能力。新增能力时先问：**它服务于哪条验收断言？** 答不上来的不加。

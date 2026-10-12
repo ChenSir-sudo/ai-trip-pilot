@@ -16,6 +16,7 @@ import math
 import sqlite3
 from pathlib import Path
 
+from src.data.base import require_search_terms
 from src.data.errors import CapabilityUnavailable, UpstreamError
 from src.data.types import (
     AreaInfo,
@@ -161,8 +162,7 @@ class LocalSnapshotRepository:
         离线侧本来两者都不给也能列出整城，但**真实侧的上游接口要求二选一必填**，
         所以这里同样拒绝——否则同一个调用会在两份实现上表现不同。
         """
-        if not keywords and not category:
-            raise ValueError("检索要求 keywords 与 category 至少给一个（契约见 base.py）")
+        require_search_terms(keywords=keywords, category=category)
         if limit <= 0:
             return []
 

@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 import httpx
 
+from src.data.base import require_search_terms
 from src.data.errors import CapabilityUnavailable, MissingCredential, UpstreamError
 from src.data.types import (
     AreaInfo,
@@ -184,8 +185,7 @@ class AmapRepository:
         这条约束是实现第二份实现时才发现的——离线实现两者都不给也能列出整城，
         于是契约漏了它。现在两份实现都拒绝「一个都不给」。
         """
-        if not keywords and not category:
-            raise ValueError("高德的检索接口要求 keywords 与 category 至少给一个")
+        require_search_terms(keywords=keywords, category=category)
         if limit <= 0:
             return []
 

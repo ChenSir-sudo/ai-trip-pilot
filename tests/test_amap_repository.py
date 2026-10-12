@@ -2,10 +2,12 @@
 
 **全部离线**：取数函数是注入的，测试自己给响应。这样上游的字段名与类型陷阱
 （「存在时字符串、不存在时数组」）能被钉住，而不需要一个真实 Key。
+不做的事：不发真实请求；上游契约的核实属于调研文档，不属于测试。
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -361,3 +363,21 @@ def test_describe_names_the_source_and_says_it_is_live():
 
     assert "高德" in text
     assert "不缓存" in text
+
+
+# ── 合规红线：不许落盘 ───────────────────────────────────────────────
+
+
+def test_the_real_implementation_has_no_way_to_persist():
+    """纪律 1：不落库真实接口返回的数据。
+
+    高德协议 3.5 条明文禁止「直接存储、缓存或技术手段抓取」其内容，3.4 条禁止用于
+    数据集构建。**这条测试读源码而不是断言运行时行为**，因为「代码里没有写盘调用」
+    本身没有运行时表现可断言——而它挡的正是「以后有人为了省配额加一层本地缓存」。
+    """
+    source = (Path(__file__).resolve().parent.parent / "src/data/amap.py").read_text(
+        encoding="utf-8"
+    )
+
+    for banned in ("sqlite3", "shelve", "pickle", "json.dump", "open("):
+        assert banned not in source, f"真实实现里出现了 {banned!r}，它可能把数据落盘了"

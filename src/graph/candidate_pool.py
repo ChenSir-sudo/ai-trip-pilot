@@ -18,8 +18,7 @@ from collections.abc import Callable, Iterable
 
 from src.data.base import DataAccess
 from src.data.errors import CapabilityUnavailable
-from src.data.types import Place
-from src.graph.state import TripState
+from src.graph.state import TripState, merge_candidates
 
 # 候选池按这几类各取一批。
 #
@@ -94,22 +93,19 @@ def make_build_candidate_pool(
         # 还是数据本来如此**——而这两种原因的处置方式完全不同。
         notes.append("各类别取回：" + " / ".join(coverage))
 
-        # 去重并按 id 定序：同一份输入必须得到同一批候选，否则回归评测不可比。
-        # 去重也在这里做一次——reducer 会兜底，但 `max_total` 得按**去重后**的条数算。
-        unique: dict[str, Place] = {}
-        for place in found:
-            unique.setdefault(place.id, place)
-        ordered: list[Place] = [unique[key] for key in sorted(unique)]
+        # 去重**复用状态里那个 reducer**，不在这里另写一份。
+        # 两处对「同一个 id 怎么办」的判断迟早会分叉，而分叉的表现是候选池时而少一条、
+        # 时而多一条——**而且两边各自都有测试通过**。
+        # 定序是为了让同一份输入得到同一批候选，否则回归评测不可比。
+        candidates = merge_candidates([], [place.to_candidate() for place in found])
+        candidates.sort(key=lambda c: c["id"])
 
-        if len(ordered) > max_total:
-            notes.append(f"候选 {len(ordered)} 条，截到 {max_total} 条")
-            ordered = ordered[:max_total]
-        if not ordered:
+        if len(candidates) > max_total:
+            notes.append(f"候选 {len(candidates)} 条，截到 {max_total} 条")
+            candidates = candidates[:max_total]
+        if not candidates:
             notes.append(f"{city} 没有取到任何候选地点")
 
-        return {
-            "candidates": [place.to_candidate() for place in ordered],
-            "data_notes": notes,
-        }
+        return {"candidates": candidates, "data_notes": notes}
 
     return build_candidate_pool
