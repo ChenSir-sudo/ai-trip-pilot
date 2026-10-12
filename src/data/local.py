@@ -151,6 +151,16 @@ class LocalSnapshotRepository:
         category: str | None = None,
         limit: int = 50,
     ) -> list[Place]:
+        """契约补充：`keywords` 与 `category` 至少给一个。
+
+        离线侧本来两者都不给也能列出整城，但**真实侧的上游接口要求二选一必填**，
+        所以这里同样拒绝——否则同一个调用会在两份实现上表现不同。
+        """
+        if not keywords and not category:
+            raise ValueError("检索要求 keywords 与 category 至少给一个（契约见 base.py）")
+        if limit <= 0:
+            return []
+
         sql = "SELECT * FROM places WHERE city = ?"
         args: list[object] = [city]
         if keywords:

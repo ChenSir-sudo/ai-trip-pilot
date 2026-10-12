@@ -23,10 +23,13 @@ META = {
 
 PLACES = [
     # id, name, lat, lon, category, city, adcode, opening_hours, price
-    ("osm:node/1", "西湖", 30.2489, 120.1410, "park", "杭州", "330100", "全天", None),
+    # 杭州与上海**各有 attraction 类**：只有这样才测得出「城市隔离」，
+    # 否则两个城市的类别互不相同，一个错误的 city 过滤也能碰巧通过。
+    ("osm:node/1", "西湖", 30.2489, 120.1410, "attraction", "杭州", "330100", "全天", None),
     ("osm:node/2", "浙江省博物馆", 30.2530, 120.1470, "museum", "杭州", "330100", "09:00-17:00", 0.0),
     ("osm:node/3", "楼外楼", 30.2500, 120.1400, "restaurant", "杭州", "330100", "10:00-21:00", 120.0),
-    ("osm:node/4", "外滩", 31.2397, 121.4900, "attraction", "上海", "310101", "全天", None),
+    ("osm:node/4", "灵隐寺", 30.2410, 120.1010, "attraction", "杭州", "330100", "07:00-18:00", 75.0),
+    ("osm:node/5", "外滩", 31.2397, 121.4900, "attraction", "上海", "310101", "全天", None),
 ]
 AREAS = [
     ("330100", "杭州市", "city", 30.2741, 120.1551, "330000"),
@@ -88,26 +91,32 @@ def test_describe_states_source_date_and_the_sample_marker(repo: LocalSnapshotRe
     assert "osm-hot" in text
     assert "2026-10-09" in text
     assert "示例数据" in text, "R7：离线结果必须被标成示例数据"
-    assert "4" in text, "应当带上条目数"
+    assert "5" in text, "应当带上条目数"
 
 
 def test_every_record_carries_sample_marking_and_license(repo: LocalSnapshotRepository):
     """不可协商：离线快照产出的每一条都必须是 is_sample=True。"""
-    for place in repo.search_place(city="杭州"):
-        assert place.provenance.is_sample is True
-        assert place.provenance.source == "osm-hot"
-        assert place.provenance.license == "ODbL-1.0"
-        assert place.provenance.as_of == "2026-10-09"
+    seen = 0
+    for category in ("attraction", "museum", "restaurant"):
+        for place in repo.search_place(city="杭州", category=category):
+            seen += 1
+            assert place.provenance.is_sample is True
+            assert place.provenance.source == "osm-hot"
+            assert place.provenance.license == "ODbL-1.0"
+            assert place.provenance.as_of == "2026-10-09"
+    assert seen == 4, "夹具里杭州有 4 个地点，别漏检"
 
 
 # ── 检索 ─────────────────────────────────────────────────────────────
 
 
 def test_search_filters_by_city(repo: LocalSnapshotRepository):
-    names = {p.name for p in repo.search_place(city="杭州")}
+    """两个城市都有 attraction，所以这条测得出城市过滤真的生效。"""
+    hangzhou = {p.name for p in repo.search_place(city="杭州", category="attraction")}
+    shanghai = {p.name for p in repo.search_place(city="上海", category="attraction")}
 
-    assert names == {"西湖", "浙江省博物馆", "楼外楼"}
-    assert "外滩" not in names
+    assert hangzhou == {"西湖", "灵隐寺"}
+    assert shanghai == {"外滩"}
 
 
 def test_search_combines_keywords_and_category(repo: LocalSnapshotRepository):
@@ -118,12 +127,11 @@ def test_search_combines_keywords_and_category(repo: LocalSnapshotRepository):
 
 def test_search_is_deterministically_ordered_and_limited(repo: LocalSnapshotRepository):
     """同一份快照下结果必须可复现，否则回归评测每次拿到的顺序都不同。"""
-    assert [p.id for p in repo.search_place(city="杭州")] == [
+    assert [p.id for p in repo.search_place(city="杭州", category="attraction")] == [
         "osm:node/1",
-        "osm:node/2",
-        "osm:node/3",
+        "osm:node/4",
     ]
-    assert len(repo.search_place(city="杭州", limit=2)) == 2
+    assert len(repo.search_place(city="杭州", category="attraction", limit=1)) == 1
 
 
 def test_search_returns_ids_that_are_unique_within_a_result(repo: LocalSnapshotRepository):
@@ -131,14 +139,26 @@ def test_search_returns_ids_that_are_unique_within_a_result(repo: LocalSnapshotR
 
     所以检索结果里的 id 必须唯一——否则候选池会静默丢地点，而且不报错。
     """
-    ids = [p.id for p in repo.search_place(city="杭州")]
+    ids = [p.id for p in repo.search_place(city="杭州", category="attraction")]
 
     assert len(ids) == len(set(ids))
 
 
 def test_unknown_city_is_an_empty_result_not_an_error(repo: LocalSnapshotRepository):
     """「查到了但没有」与「查不了」必须分开。"""
-    assert repo.search_place(city="不存在的城市") == []
+    assert repo.search_place(city="不存在的城市", keywords="任何") == []
+
+
+def test_search_refuses_when_neither_keyword_nor_category_is_given(
+    repo: LocalSnapshotRepository,
+):
+    """这条约束是两份实现共用契约的一部分。
+
+    离线侧本可以列出整城，但真实侧的上游要求二选一必填；**接口若不在这一点上
+    收紧，同一个调用就会在离线正常、在真实报错**。
+    """
+    with pytest.raises(ValueError, match="至少给一个"):
+        repo.search_place(city="杭州")
 
 
 # ── 地名解析：不许编坐标 ─────────────────────────────────────────────
