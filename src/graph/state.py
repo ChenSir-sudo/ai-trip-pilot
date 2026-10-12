@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import operator
 from typing import Annotated, Any, TypedDict
 
 
@@ -81,6 +82,14 @@ class TripState(TypedDict, total=False):
     clarify_question: str
 
     # ── 候选池：合并型 ──
-    # 现在还没有节点写它。提前定义，是因为这个字段的 reducer 决定了后续每个节点
-    # 的返回值该怎么写；等并行扇出的节点写出来再定，就要回头改动所有节点。
+    # 由 build_candidate_pool 写入，内容是数据访问层的返回。挂在 merge_candidates 上，
+    # 因为图里有循环、将来还会有并行扇出，同一个节点会跑多次；直接拼接会产生重复 ID，
+    # 让红线 A1（按 ID 命中）失去意义。
     candidates: Annotated[list[dict], merge_candidates]
+
+    # ── 数据源的能力边界与降级记录：累积型 ──
+    # 例如「离线侧类别 X 不可用」「候选被截断」。**累积**，所以挂 operator.add：
+    # 这些是可观测的事实，不该被后一次覆盖掉。
+    # 它存在的理由与红线 R8 同源——**不得静默放宽**：取不到的那几类必须在输出里
+    # 看得见，否则方案会莫名少几个地点而没人知道为什么。
+    data_notes: Annotated[list[str], operator.add]

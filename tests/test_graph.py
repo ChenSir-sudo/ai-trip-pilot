@@ -19,6 +19,8 @@ from langgraph.types import Command, interrupt
 from src.graph.builder import build_graph
 from src.graph.state import merge_candidates
 
+from fakes import FakeDataAccess  # tests/fakes.py：显式导入，不用隐藏的 fixture
+
 RAW_REQUEST = "规划一下去上海玩 7 天"
 
 
@@ -47,7 +49,8 @@ def test_topology_has_a_fork_and_a_clarify_loop():
     assert ("__start__", "extract_slots", False) in edges
     assert ("extract_slots", "check_completeness", False) in edges
     assert ("check_completeness", "clarify", True) in edges
-    assert ("check_completeness", "__end__", True) in edges
+    assert ("check_completeness", "build_candidate_pool", True) in edges
+    assert ("build_candidate_pool", "__end__", False) in edges
     assert ("clarify", "check_completeness", False) in edges, (
         "澄清必须能回到判定，否则答复不全时就卡住了"
     )
@@ -192,8 +195,11 @@ def test_either_group_fields_are_labelled_distinctly():
 
 
 def test_resume_with_the_answer_finishes():
-    """答复之后从断点继续，并真的把答复写进了槽位。"""
-    graph = build_graph(extractor=_stub_extractor)
+    """答复之后从断点继续，并真的把答复写进了槽位。
+
+    注入假数据源：槽位补齐后图会继续去取候选池（S2 接上的那个节点）。
+    """
+    graph = build_graph(extractor=_stub_extractor, data=FakeDataAccess())
     config = _config("test-resume")
     graph.invoke({"raw_request": RAW_REQUEST}, config=config)
 
@@ -220,7 +226,7 @@ def test_keys_that_were_not_asked_are_ignored():
 
     允许任意键写入，等于给调用方开了一条绕过抽取通道、直接篡改槽位的路。
     """
-    graph = build_graph(extractor=_stub_extractor)
+    graph = build_graph(extractor=_stub_extractor, data=FakeDataAccess())
     config = _config("test-keys")
     graph.invoke({"raw_request": RAW_REQUEST}, config=config)
 

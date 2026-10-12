@@ -39,6 +39,20 @@ LICENSE = "amap-terms"
 _PAGE_SIZE = 25
 _MAX_PAGES = 4  # 100 条，远低于 200 的硬顶，也照顾到基础搜索服务的月配额
 
+# 我们的类别词表 → 高德 `types` 参数用的中文类别名。
+#
+# 官方文档写 `types` 接受「六位分类代码**或汉字**」，所以传中文是在契约内的；
+# 但**「哪个中文词对应哪一类」是我们自己的映射，没有与高德的分类表逐个核对过**。
+# 它是已知的待核实项（与 2026-amap-mcp-integration.md §7 的 ❓ 并列，需要有效 key
+# 才能闭合）。映射错了的表现是「检索结果为空」而**不是报错**——所以真实路径的
+# 类别检索在核实前不应被当作已验证的能力。
+_CATEGORY_TO_TYPES: dict[str, str] = {
+    "attraction": "风景名胜",
+    "museum": "科教文化服务",
+    "restaurant": "餐饮服务",
+    "hotel": "住宿服务",
+}
+
 # 已核到字段级的端点。**不在这个集合里的端点一律不实现**——凭空按记忆写参数，
 # 会得到「代码看起来对、上游其实不认」的假实现。
 _VERIFIED = {
@@ -181,7 +195,15 @@ class AmapRepository:
         if keywords:
             params["keywords"] = keywords
         if category:
-            params["types"] = category
+            mapped = _CATEGORY_TO_TYPES.get(category)
+            if mapped is None:
+                # **不把未映射的类别原样传下去**：高德不认识英文标签，结果会是
+                # 一片空——而「没有这类地点」与「这个词高德不认」是两件事。
+                raise CapabilityUnavailable(
+                    f"类别 {category!r} 没有对应的中文类型名，不能拿它去查高德。"
+                    f"已知映射：{sorted(_CATEGORY_TO_TYPES)}"
+                )
+            params["types"] = mapped
 
         found: list[Place] = []
         for page in range(1, _MAX_PAGES + 1):

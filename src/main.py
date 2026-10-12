@@ -1,10 +1,10 @@
-"""命令行入口：把一句出行需求跑成结构化槽位，缺什么问什么。
+"""命令行入口：把一句出行需求跑成结构化槽位，缺什么问什么，再去取候选池。
 
 位置：本阶段的临时入口。真正的入口是编排外壳（会话、幂等、路由），
     外壳排在 S6，届时本文件退回为调试工具。
 可测试性：需要 langgraph 与一个可用的 `LLM_API_KEY`——真实抽取要调模型。
     完全离线的验证走 `python -m pytest`：那里的抽取器是注入的假实现。
-不做的事：不做会话管理、不做幂等、不做重试策略、不落库。
+不做的事：不做会话管理、不做幂等、不做重试策略、**不落库**（真实接口的数据禁止存储）。
 
 用法：
     python -m src.main                       # 交互式：先输入需求
@@ -22,6 +22,8 @@ import sys
 
 from langgraph.types import Command
 
+from src.data.errors import DataAccessError
+from src.data.factory import load_data_access
 from src.graph.builder import build_graph
 from src.llm.extractor import make_llm_extractor
 from src.llm.schema import validate_slots
@@ -80,6 +82,30 @@ def run(graph, raw_request: str, thread_id: str) -> dict:
     return result
 
 
+def print_pool(result: dict) -> None:
+    """打印候选池与数据说明。
+
+    「打印来源」是 S2 可演示产出的一部分，也是**协议要求的正向署名义务**
+    （高德中文协议 7.7 条），所以来源不是调试信息，是必须展示的内容。
+    """
+    candidates = result.get("candidates") or []
+    print(f"\n候选池 {len(candidates)} 条：")
+    for i, cand in enumerate(candidates[:10], 1):
+        print(
+            f"  {i:2d}. {cand['name']}  [{cand.get('category') or '未分类'}]"
+            f"  id={cand['id']}  来源={cand['source']} {cand['as_of']}"
+            + ("  ⚠️示例数据" if cand.get("is_sample") else "")
+        )
+    if len(candidates) > 10:
+        print(f"  …… 另有 {len(candidates) - 10} 条")
+
+    notes = result.get("data_notes") or []
+    if notes:
+        print("\n数据说明：")
+        for note in notes:
+            print(f"  - {note}")
+
+
 def main(argv: list[str] | None = None) -> int:
     """入口。返回进程退出码：0 正常，1 没有输入，2 运行失败，130 被中断。"""
     parser = argparse.ArgumentParser(
@@ -90,7 +116,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     # 构造抽取器不联网；缺少 key 的报错会发生在第一次模型调用时。
-    graph = build_graph(extractor=make_llm_extractor())
+    try:
+        data = load_data_access()
+    except DataAccessError as exc:
+        print(f"数据源不可用：{exc}", file=sys.stderr)
+        print(
+            "  离线：python -m scripts.fetch_offline_data 抓一份快照\n"
+            "  真实：在 .env 里设 DATA_BACKEND=amap 与 AMAP_API_KEY=...",
+            file=sys.stderr,
+        )
+        return 2
+
+    graph = build_graph(extractor=make_llm_extractor(), data=data)
 
     raw_request = args.request
     if not raw_request:
@@ -120,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
     print("\n=== 完成 ===")
     print("抽取到的槽位 :", result.get("slots"))
     print("仍缺         :", result.get("missing_slots") or "（无）")
+    print_pool(result)
     return 0
 
 

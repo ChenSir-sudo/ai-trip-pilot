@@ -17,6 +17,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from src.data.base import DataAccess
+from src.graph.candidate_pool import make_build_candidate_pool
 from src.graph.completeness import find_missing_slots, slot_label
 from src.graph.state import TripState
 
@@ -140,12 +142,15 @@ def clarify(state: TripState) -> dict:
     }
 
 
-def build_graph(*, extractor: Extractor | None = None):
+def build_graph(*, extractor: Extractor | None = None, data: DataAccess | None = None):
     """组装并编译规划图。
 
     参数：
       extractor：出行需求原文 → 槽位。`None` 表示不抽取（离线与测试用）；
           生产入口 `src/main.py` 传入真实的模型抽取器。
+      data：数据访问实现。`None` 表示没有注入——**候选池节点会在被调用时明确报错**，
+          而不是返回空池。两处依赖都用注入：这是让 60 多条测试在无密钥、无网络、
+          无数据集的机器上跑完的原因（architecture.md §8）。
 
     可测试性：返回的图带内存 checkpointer，可以在没有模型密钥的机器上直接 invoke。
     注意 checkpointer 是**必需**的：图里有挂起点，去掉它就无法恢复。
@@ -155,6 +160,7 @@ def build_graph(*, extractor: Extractor | None = None):
     builder.add_node("extract_slots", make_extract_slots(extractor))
     builder.add_node("check_completeness", check_completeness)
     builder.add_node("clarify", clarify)
+    builder.add_node("build_candidate_pool", make_build_candidate_pool(data))
 
     builder.add_edge(START, "extract_slots")
     builder.add_edge("extract_slots", "check_completeness")
@@ -163,12 +169,16 @@ def build_graph(*, extractor: Extractor | None = None):
     builder.add_conditional_edges(
         "check_completeness",
         route_after_check,
-        {"clarify": "clarify", "ready": END},
+        # `ready` 不再直接结束：槽位齐了就去取候选池——那是 S2 的可演示产出。
+        {"clarify": "clarify", "ready": "build_candidate_pool"},
     )
 
     # 澄清循环：答复之后回到判定，答不全就再问一轮。
     # 这个环不会空转——每一轮都以挂起结束，必须等调用方给出答复才继续。
     builder.add_edge("clarify", "check_completeness")
+
+    # 取完候选就结束。S3 会在这里插求解器，S2 到此为止。
+    builder.add_edge("build_candidate_pool", END)
 
     # InMemorySaver：进程内的 checkpointer，进程退出即丢失（旧版文档里叫 MemorySaver）。
     # 它不再是「接线但闲置」——挂起点的状态存与取都靠它。
